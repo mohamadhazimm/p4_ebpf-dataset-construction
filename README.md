@@ -2,6 +2,17 @@
 
 This folder contains the inputs, benign workload definitions, telemetry, model code, saved estimators, and evaluation reports for a network-only vs host-only vs hybrid Random Forest comparison.
 
+## Related Repositories
+
+- [Thesis and research overview](https://github.com/mohamadhazimm/a-unified-p4-ebpf-architecture-for-host-and-network-malware-detection)
+  contains the written research, figures, and supporting analysis.
+- [P4 + eBPF Hybrid Monitor](https://github.com/MohamadMHazim/p4_ebpf)
+  contains the programmable data-plane and host-monitor implementation.
+
+These repositories are maintained independently. This study covers dataset
+construction and offline model evaluation; it does not replace measurements on
+a live P4 target.
+
 ## Agent Orientation
 
 This is a research pipeline comparing network-only, host/eBPF-only, and hybrid malware classifiers. The current evaluation uses 224 malware samples with archived telemetry and 138 benign controls. Malware category labels are MalwareBazaar metadata, not independently confirmed runtime behavior. Earlier sections and paths are retained for historical cohorts; use the latest cohort paths below when reporting current results.
