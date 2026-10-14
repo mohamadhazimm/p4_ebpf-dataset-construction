@@ -1,0 +1,44 @@
+# Local credentials and environment files
+.env
+.env.*
+!.env.example
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Experimental inputs, workload fixtures, captures, telemetry, and datasets
+# remain local unless a reviewed summary or manifest is explicitly allowed.
+data/*
+!data/benign/
+data/benign/*
+!data/benign/workload_manifest.csv
+!data/hybrid_scenarios/
+data/hybrid_scenarios/*
+!data/hybrid_scenarios/scenario_manifest.csv
+!data/malware/
+data/malware/*
+!data/malware/malware_sample_inventory_all_expansions_20261014.csv
+!data/malware/revision4/
+data/malware/revision4/*
+!data/malware/revision4/family-heldout-balanced-224-v1-20261014/
+data/malware/revision4/family-heldout-balanced-224-v1-20261014/*
+!data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/
+data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/*
+!data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/balanced_9network_9host/
+data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/balanced_9network_9host/*
+!data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/balanced_9network_9host/category_analysis/
+data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/balanced_9network_9host/category_analysis/*
+!data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/balanced_9network_9host/category_analysis/overall_and_category_scores.csv
+!data/packages/
+data/packages/*
+!data/packages/package_manifest.csv
+
+# Generated model artifacts
+models/
+
+# Sample-level predictions are local analysis outputs
+/reports/out_of_fold_predictions.csv
