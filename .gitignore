@@ -11,11 +11,14 @@ __pycache__/
 .pytest_cache/
 
 # Experimental inputs, workload fixtures, captures, telemetry, and datasets
-# remain local unless a reviewed summary or manifest is explicitly allowed.
+# remain local unless explicitly allowed below.
 data/*
 !data/benign/
 data/benign/*
 !data/benign/workload_manifest.csv
+!data/benign/revision3/
+data/benign/revision3/*
+!data/benign/revision3/workload_manifest.csv
 !data/hybrid_scenarios/
 data/hybrid_scenarios/*
 !data/hybrid_scenarios/scenario_manifest.csv
@@ -24,21 +27,36 @@ data/malware/*
 !data/malware/malware_sample_inventory_all_expansions_20261014.csv
 !data/malware/revision4/
 data/malware/revision4/*
+!data/malware/revision4/incoming/
+data/malware/revision4/incoming/*
+!data/malware/revision4/incoming/*.jsonl
+!data/malware/revision4/family-heldout-stable-151-v1-20261014/
+data/malware/revision4/family-heldout-stable-151-v1-20261014/*
+!data/malware/revision4/family-heldout-stable-151-v1-20261014/malware_family_metadata_151.jsonl
+!data/malware/revision4/family-heldout-stable-151-v1-20261014/feature_breadth_comparison/
+data/malware/revision4/family-heldout-stable-151-v1-20261014/feature_breadth_comparison/*
+!data/malware/revision4/family-heldout-stable-151-v1-20261014/feature_breadth_comparison/balanced_9network_9host_feature_columns.json
 !data/malware/revision4/family-heldout-balanced-224-v1-20261014/
-data/malware/revision4/family-heldout-balanced-224-v1-20261014/*
-!data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/
-data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/*
-!data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/balanced_9network_9host/
-data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/balanced_9network_9host/*
-!data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/balanced_9network_9host/category_analysis/
-data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/balanced_9network_9host/category_analysis/*
-!data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/balanced_9network_9host/category_analysis/overall_and_category_scores.csv
+!data/malware/revision4/family-heldout-balanced-224-v1-20261014/**
 !data/packages/
 data/packages/*
 !data/packages/package_manifest.csv
 
+# Never publish malware archives, executable payloads, raw PCAPs, VM runs,
+# or the detailed per-event collector streams.
+*.pcap
+*.pcapng
+data/**/*.zip
+data/**/*.elf
+data/**/*.bin
+data/**/runs/
+data/**/combined_collector*.csv
+data/packages/*.tar*
+
 # Generated model artifacts
 models/
+!data/malware/revision4/family-heldout-balanced-224-v1-20261014/models/
+!data/malware/revision4/family-heldout-balanced-224-v1-20261014/models/**
 
-# Sample-level predictions are local analysis outputs
+# Legacy root-level sample predictions are local analysis outputs
 /reports/out_of_fold_predictions.csv

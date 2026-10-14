@@ -22,17 +22,20 @@ This is a research pipeline comparing network-only, host/eBPF-only, and hybrid m
 - `src/` contains the Python acquisition, inventory, dataset, feature, model-training, and category-analysis code. Start with `build_dataset.py`, `build_feature_breadth_dataset.py`, `train_compare.py`, and `analyze_malware_category_results.py` for the analysis path.
 - `scripts/` contains VirtualBox staging, isolated collection, merge, and experiment orchestration. `run_malware_revision4_pipeline.sh` is the revision-4 pipeline entry point; `vbox_malware_batch.sh` runs samples and collects telemetry.
 - `workloads/` generates benign workloads and hybrid emulation scenarios.
-- `data/` holds cohort manifests, package metadata, telemetry, datasets, and generated results. Cohort-specific outputs live under versioned `data/malware/revision4/family-heldout-*` directories. The full datasets, raw run artifacts, and malware samples are local research inputs, not source files.
-- `models/` and `reports/` contain baseline model artifacts and metrics; newer revision-specific outputs are kept with their cohort under `data/malware/revision4/`.
+- `data/` holds cohort manifests, package metadata, telemetry, datasets, and generated results. The complete engineered 224-malware dataset, its three trained models, OOF predictions, and category reports are included under `data/malware/revision4/family-heldout-balanced-224-v1-20261014/`.
+- `models/` and `reports/` contain baseline artifacts; the versioned 224-cohort models and reports are kept with that cohort under `data/malware/revision4/`.
 - `tests/` contains focused unit tests. Run them with `python3 -m unittest discover -s tests`.
 - `requirements.txt` lists Python dependencies.
+
+For the chronological methods, complete current results, artifact guide, and a presentation outline, read [`docs/STUDY_WALKTHROUGH.md`](docs/STUDY_WALKTHROUGH.md).
 
 ### Current results
 
 - Evaluation dataset: `data/malware/revision4/family-heldout-balanced-224-v1-20261014/labeled_sample_dataset_full_35host_9network.csv`.
 - Overall and per-category scores: `data/malware/revision4/family-heldout-balanced-224-v1-20261014/reports/balanced_9network_9host/category_analysis/overall_and_category_scores.csv`.
 - Acquisition and collection inventory: `data/malware/malware_sample_inventory_all_expansions_20261014.csv`.
-- The evaluation dataset and raw out-of-fold predictions are local-only and excluded from Git. The aggregate score CSV and inventory above are the published results for the current cohort.
+- Sample-level out-of-fold predictions, category slices, execution outcomes, feature importance, and the three final fitted models are included alongside the dataset and metrics.
+- Raw malware archives, PCAP files, VM run directories, and detailed per-event collector streams remain local and are excluded from GitHub.
 - Cross-validation is five-fold `StratifiedGroupKFold`, grouped by malware signature and benign package family. The current run has 57 groups, with no group crossing folds. Network and host each use 45 features; hybrid uses 90.
 
 ### Workflow
@@ -45,7 +48,7 @@ This is a research pipeline comparing network-only, host/eBPF-only, and hybrid m
 
 ### Safety and credentials
 
-Never commit API keys, passwords, malware archives or executables, packet captures, or per-run VM output. Keep `MALWARE_BAZAAR_API_KEY` and `VBOX_GUEST_PASSWORD` in the local environment; do not paste their values into commands recorded in the repository. The malware VM must use only the internal `malnet` network, with no NAT or public interface. `.gitignore` excludes local secrets and all experimental data by default. Only the reviewed workload/package manifests, 231-row inventory, and current aggregate category-score CSV are allowed into this repository; model binaries and generated datasets remain local.
+Never commit API keys, passwords, malware archives or executables, packet captures, or per-run VM output. Keep `MALWARE_BAZAAR_API_KEY` and `VBOX_GUEST_PASSWORD` in the local environment; do not paste their values into commands recorded in the repository. The malware VM must use only the internal `malnet` network, with no NAT or public interface. `.gitignore` excludes raw collection material by default while allowing the reviewed manifests, final engineered dataset, predictions, metrics, category results, and fitted models needed to inspect and reproduce the 224-sample evaluation.
 
 ## Data and labels
 
