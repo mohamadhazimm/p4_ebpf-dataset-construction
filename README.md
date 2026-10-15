@@ -29,6 +29,16 @@ This is a research pipeline comparing network-only, host/eBPF-only, and hybrid m
 
 For the chronological methods, complete current results, artifact guide, and a presentation outline, read [`docs/STUDY_WALKTHROUGH.md`](docs/STUDY_WALKTHROUGH.md).
 
+### Presentation
+
+After installing the dependencies in `requirements.txt`, regenerate the current 224-malware study presentation with:
+
+```bash
+python3 scripts/generate_presentation.py
+```
+
+The script writes `presentations/malware_detection_study.pptx` with slide-by-slide speaker notes embedded, plus the companion [`presentations/speaker_notes.md`](presentations/speaker_notes.md).
+
 ### Current results
 
 - Evaluation dataset: `data/malware/revision4/family-heldout-balanced-224-v1-20261014/labeled_sample_dataset_full_35host_9network.csv`.
