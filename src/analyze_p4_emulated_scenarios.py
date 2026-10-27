@@ -145,6 +145,10 @@ P4_SIGNAL_CONTRACT = {
         "reg_rst cumulative counter",
         "Sum per-index RST counter differences for the current window.",
     ),
+    "net_new_conn_dst_max": (
+        "reg_newconn_dst cumulative counter, per destination bucket",
+        "Largest per-bucket increase of TCP SYN-without-ACK segments for the current window.",
+    ),
     "net_flows_with_ab": (
         "reg_pkts_ab cumulative counter",
         "Count active buckets with any cumulative A-to-B packet or byte activity.",
@@ -874,7 +878,8 @@ def main() -> int:
             "sensor": "Equal-signal-family hybrid",
             "base_signal_families": 2 * len(net_contract),
             "sample_model_columns": 2 * len(net_contract) * len(analyzer.P4_WINDOW_STATS),
-            "measurement": "29 host eBPF families selected within each training fold plus 29 P4 families",
+            "measurement": f"{len(net_contract)} host eBPF families selected within each training fold "
+                           f"plus {len(net_contract)} P4 families",
         },
     ]
     write_csv(output_dir / "feature_breadth.csv", breadth_rows, list(breadth_rows[0]))
