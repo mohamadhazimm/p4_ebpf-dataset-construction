@@ -94,6 +94,31 @@ source category as confirmed behavior. The packet-derived features are not
 measurements from a live P4 switch, and run-level pairing does not establish
 process-to-flow causality.
 
+## Shared classifier for three-arm hardware tests
+
+The existing network-only, host-only, and hybrid Joblib files are separate
+classifiers. To use one user-space classifier across P4-only, eBPF-only, and
+hybrid arms, `src/train_shared_arm_classifier.py` augments each labeled feature
+row into three modality views, adds network/host availability indicators, and
+keeps all views of each original group in the same cross-validation fold. It
+uses the existing Random Forest configuration and a fixed 0.5 threshold. It
+reads only the precomputed labeled feature CSV; it does not execute sample
+artifacts. By default, it writes a fresh timestamped model/report directory
+under the cohort's `models/` directory and refuses to overwrite non-empty
+outputs.
+
+This model is not ready for hardware inference until live P4/eBPF output is
+adapted to the same 45 network and 45 host features. The current P4/eBPF
+collector uses a different feature schema, and the model's default mirror
+report port is not connected in the physical two-host topology.
+
+The live feature-vector adapter is in `src/live_arm_inference.py`. It aggregates
+per-window network and host counters with the same mean, max, sum, population
+standard deviation, and active-window rules used to build the training rows.
+Disabled modalities are zeroed with explicit availability indicators; missing
+enabled-sensor fields and invalid values are errors. This adapter is not a
+substitute for implementing and validating the physical P4/eBPF collectors.
+
 ## Safety
 
 Keep API keys and VM credentials in the local environment or a private `.env`
