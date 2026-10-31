@@ -26,7 +26,7 @@ from workloads.generate_hybrid_scenarios import build_cohort
 
 class HybridScenarioTests(unittest.TestCase):
     def test_canonical_collector_signal_breadth_is_explicit(self):
-        self.assertEqual(len(P4_SIGNAL_CONTRACT), 29)
+        self.assertEqual(len(P4_SIGNAL_CONTRACT), 30)
         self.assertEqual(len(HOST_SIGNAL_CONTRACT), 26)
 
     def test_candidate_selection_targets_new_tagged_families(self):
