@@ -133,12 +133,20 @@ or detailed per-run telemetry. The malware VM must not have NAT, bridged, or
 public network access. Encrypted samples are stored for controlled isolated
 collection; do not extract or execute them on the host.
 
-## Related Workspaces
+## Related Repositories
 
-- The [research manuscript and thesis](https://github.com/mohamadhazimm/a-unified-p4-ebpf-architecture-for-host-and-network-malware-detection)
-  describe the broader architecture and study context.
-- The [P4 and eBPF implementation](https://github.com/MohamadMHazim/p4_ebpf)
-  contains the data-plane and host-monitor code.
+This repository is one of five in the research project:
+
+- The [P4 and eBPF implementation](https://github.com/mohamadhazimm/p4_ebpf)
+  contains the P4 program, the eBPF host monitors, the hybrid collector, and the
+  switch and kernel benchmarks.
+- [p4-ebpf-malware-detection](https://github.com/mohamadhazimm/p4-ebpf-malware-detection) is the
+  public release of the ICC 2027 paper: P4 program, in-kernel monitor, feature
+  code, the 240-execution dataset built here, and the evaluation scripts.
+- The [thesis](https://github.com/mohamadhazimm/a-unified-p4-ebpf-architecture-for-host-and-network-malware-detection)
+  (private) describes the broader architecture and study context.
+- [icc-2027-paper](https://github.com/mohamadhazimm/icc-2027-paper) (private) holds the
+  LaTeX source of the ICC 2027 paper, synced with Overleaf.
 
 These projects are maintained separately. This repository focuses on cohort
 construction and offline model evaluation.
