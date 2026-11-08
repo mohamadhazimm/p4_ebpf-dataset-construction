@@ -6,17 +6,17 @@ Companion to `malware_detection_study.pptx`.
 
 Open with the question: does combining host and network observations help distinguish this malware cohort from a controlled benign workload set? The headline result is a modest hybrid improvement over host-only under grouped out-of-fold evaluation. This is not a live P4 hardware result or a claim of universal superiority.
 
-## 2. Research question
+## 2. Malware families
 
-The experiment compares three binary classifiers on identical samples and grouped folds. Network-only uses packet and flow counters, host-only uses eBPF-derived system-call counters, and hybrid combines them. The question is whether the two sensor views add complementary evidence under comparable feature budgets, not whether the model identifies a malware family.
+The primary model cohort contains 224 malware samples across 28 named family labels; 8 samples have no assigned family label. The register counts family labels in the modeled cohort, not attack behavior verified independently. The supplemental intake adds 11 MalShare Mirai samples outside model scoring: one compatible I386 sample completed an isolated run, while ten other architectures were not run on the x86-64 guest.
 
 ## 3. Cohort and exclusions
 
-The inventory contains 231 acquisitions. 224 malware samples had archived telemetry and were included; 7 did not and were excluded. The final binary dataset adds 138 benign workloads, yielding 362 evaluated samples. The newest batch had 42 acquisitions, 38 telemetry captures, and four without usable telemetry. The 195 telemetry windows and 21,189 eBPF events refer to the newest batch's successful captures, not the whole cohort.
+The source-aware catalog contains 242 malware records: 231 from MalwareBazaar and 11 supplemental MalShare samples. The primary evaluation remains 224 modeled MalwareBazaar malware plus 138 benign workloads, for 362 samples. Seven earlier acquisitions lacked usable telemetry; the 11 MalShare additions remain supplemental, including the single I386 run, and do not change the reported model scores.
 
 ## 4. Isolated collection
 
-Candidate archives were selected from MalwareBazaar metadata, verified by SHA-256, staged in a guest restored from a clean snapshot, and run one at a time. The malware VM and sink VM used only the internal malnet network. Packet capture and eBPF telemetry were collected in parallel. The 20-second cap and 0.5-second windows were consistent across the collection. A nonzero exit or timeout did not change the malware label; missing archived telemetry did exclude a sample.
+The malware guest is Ubuntu-Clean-24.04 and is restored from a clean snapshot before every sample. Its only enabled adapter is VirtualBox internal network malnet; the sink VM uses the same network, with no NAT, bridged, or host-only interface. Each encrypted archive and extracted payload is hash-verified. One sample runs for at most 20 seconds while packet capture and eBPF collect 0.5-second windows. The malware VM is powered off and reverted after each run.
 
 ## 5. Feature construction
 
@@ -24,7 +24,7 @@ The raw collection produces multiple time windows per sample. Dataset constructi
 
 ## 6. Evaluation protocol
 
-StratifiedGroupKFold uses five folds and seed 42. The 57 groups are 29 malware signature groups plus 28 benign package-family groups; no group crosses folds. Within each fold, median imputation is fit only on the training partition, followed by the same 500-tree Random Forest configuration. Each sample receives one held-out probability for each feature set. Balanced accuracy is the mean of sensitivity and specificity, which is useful when class sizes differ.
+StratifiedGroupKFold uses five folds and seed 42. The 57 groups are 29 malware signature groups plus 28 benign package-family groups; no group crosses folds. Within each fold, median imputation is fit only on the training partition, followed by the same Random Forest configuration: 500 trees, square-root feature sampling, minimum leaf size two, and balanced subsample weights. Each sample receives one held-out probability for each feature set. Balanced accuracy is the mean of sensitivity and specificity, which is useful when class sizes differ.
 
 ## 7. Overall results
 

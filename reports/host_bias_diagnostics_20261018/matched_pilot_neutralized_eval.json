@@ -1,0 +1,39 @@
+{
+  "pilot_dir": "data/versioned-collector/telemetry-2026-10-18.1-pilot40-nativenames-20261018/modeling",
+  "train_n": 20,
+  "val_n": 20,
+  "train_class_counts": {
+    "benign": 10,
+    "malware": 10
+  },
+  "val_class_counts": {
+    "benign": 10,
+    "malware": 10
+  },
+  "results": [
+    {
+      "model": "host_full",
+      "n_features": 130,
+      "balanced_accuracy": 0.95,
+      "roc_auc": 0.99
+    },
+    {
+      "model": "network_full",
+      "n_features": 145,
+      "balanced_accuracy": 0.55,
+      "roc_auc": 0.615
+    },
+    {
+      "model": "duration_only",
+      "n_features": 61,
+      "balanced_accuracy": 0.75,
+      "roc_auc": 0.9
+    },
+    {
+      "model": "host_no_duration",
+      "n_features": 75,
+      "balanced_accuracy": 0.95,
+      "roc_auc": 0.99
+    }
+  ]
+}

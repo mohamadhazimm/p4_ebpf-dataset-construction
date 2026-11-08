@@ -1,0 +1,1103 @@
+{
+  "evaluation": "train on 10% family-stratified malware plus all self-generated simulations; test on remaining malware only",
+  "seed": 42,
+  "malware_train_fraction_requested": 0.1,
+  "malware_training_fraction_actual": 0.13392857142857142,
+  "malware_samples_total": 224,
+  "malware_training_samples": 30,
+  "unknown_malware_test_samples": 194,
+  "malware_family_split_rule": "For families with at least two samples, train max(1, floor(fraction*n)) while retaining at least one test sample. Singleton families are test-only.",
+  "malware_family_counts": {
+    "Akira": {
+      "total": 8,
+      "training": 1,
+      "unknown_test": 7
+    },
+    "Bert": {
+      "total": 2,
+      "training": 1,
+      "unknown_test": 1
+    },
+    "BillGates": {
+      "total": 1,
+      "training": 0,
+      "unknown_test": 1
+    },
+    "BrickStorm": {
+      "total": 1,
+      "training": 0,
+      "unknown_test": 1
+    },
+    "CatStorm": {
+      "total": 3,
+      "training": 1,
+      "unknown_test": 2
+    },
+    "ChinaZ": {
+      "total": 1,
+      "training": 0,
+      "unknown_test": 1
+    },
+    "CoinMiner": {
+      "total": 4,
+      "training": 1,
+      "unknown_test": 3
+    },
+    "DDoSAgent": {
+      "total": 5,
+      "training": 1,
+      "unknown_test": 4
+    },
+    "DDoSTF": {
+      "total": 3,
+      "training": 1,
+      "unknown_test": 2
+    },
+    "DeskRAT": {
+      "total": 1,
+      "training": 0,
+      "unknown_test": 1
+    },
+    "FlylegitBot": {
+      "total": 1,
+      "training": 0,
+      "unknown_test": 1
+    },
+    "Gafgyt": {
+      "total": 25,
+      "training": 2,
+      "unknown_test": 23
+    },
+    "GetShell": {
+      "total": 2,
+      "training": 1,
+      "unknown_test": 1
+    },
+    "Gunra": {
+      "total": 4,
+      "training": 1,
+      "unknown_test": 3
+    },
+    "INC": {
+      "total": 1,
+      "training": 0,
+      "unknown_test": 1
+    },
+    "JackSkid": {
+      "total": 13,
+      "training": 1,
+      "unknown_test": 12
+    },
+    "Katana": {
+      "total": 10,
+      "training": 1,
+      "unknown_test": 9
+    },
+    "Kimwolf": {
+      "total": 5,
+      "training": 1,
+      "unknown_test": 4
+    },
+    "LockBit": {
+      "total": 2,
+      "training": 1,
+      "unknown_test": 1
+    },
+    "Mirai": {
+      "total": 103,
+      "training": 10,
+      "unknown_test": 93
+    },
+    "MossadProxy": {
+      "total": 8,
+      "training": 1,
+      "unknown_test": 7
+    },
+    "Nitrogen": {
+      "total": 1,
+      "training": 0,
+      "unknown_test": 1
+    },
+    "NoEscape": {
+      "total": 1,
+      "training": 0,
+      "unknown_test": 1
+    },
+    "Prometei": {
+      "total": 2,
+      "training": 1,
+      "unknown_test": 1
+    },
+    "PromptLock": {
+      "total": 1,
+      "training": 0,
+      "unknown_test": 1
+    },
+    "Qilin": {
+      "total": 4,
+      "training": 1,
+      "unknown_test": 3
+    },
+    "Vibenet": {
+      "total": 2,
+      "training": 1,
+      "unknown_test": 1
+    },
+    "XorDDoS": {
+      "total": 2,
+      "training": 1,
+      "unknown_test": 1
+    },
+    "unassigned": {
+      "total": 8,
+      "training": 1,
+      "unknown_test": 7
+    }
+  },
+  "simulation_training_samples": 84,
+  "simulation_training_label_counts": {
+    "attack_simulation": 28,
+    "benign_control": 56
+  },
+  "training_samples_total": 114,
+  "test_samples_total": 194,
+  "test_contains_only_malware": true,
+  "accuracy_interpretation": "Accuracy equals malware detection rate because every test label is malware.",
+  "false_positive_rate_available": false,
+  "p4_reconstruction": {
+    "source": "existing full-cohort P4 reconstruction; ambiguous packet/window assignments are duration-weighted over counter-consistent possibilities",
+    "reconstruction_dataset": "/home/ali/Desktop/Hazim/vbox-runs/hybrid-rf-study-20261010/data/malware/revision4/full-cohort-feature-pool-20261016/p4_pcap_reconstructed_labeled_sample_dataset.csv",
+    "malware_samples_with_reconstructed_features": 224,
+    "reconstruction_methods": {
+      "duration_weighted_counter_consistent_assignments": 61,
+      "unique_packet_window_assignment": 163
+    },
+    "network_feature_count": 145
+  },
+  "shared_host_feature_count": 170,
+  "models": {
+    "network": {
+      "feature_count": 145,
+      "test_metrics": {
+        "samples": 194,
+        "detected": 110,
+        "missed": 84,
+        "accuracy": 0.5670103092783505,
+        "mean_probability_malware": 0.6540520565370072
+      },
+      "training_label_counts": {
+        "0": 56,
+        "1": 58
+      }
+    },
+    "host": {
+      "feature_count": 170,
+      "test_metrics": {
+        "samples": 194,
+        "detected": 193,
+        "missed": 1,
+        "accuracy": 0.9948453608247423,
+        "mean_probability_malware": 0.9287815529104235
+      },
+      "training_label_counts": {
+        "0": 56,
+        "1": 58
+      }
+    },
+    "hybrid": {
+      "feature_count": 315,
+      "test_metrics": {
+        "samples": 194,
+        "detected": 193,
+        "missed": 1,
+        "accuracy": 0.9948453608247423,
+        "mean_probability_malware": 0.9132636961999177
+      },
+      "training_label_counts": {
+        "0": 56,
+        "1": 58
+      }
+    }
+  },
+  "per_family_test_metrics": {
+    "network": {
+      "Akira": {
+        "total": 8,
+        "training": 1,
+        "unknown_test": 7,
+        "training_fraction_actual": 0.125,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 6,
+        "detection_rate": 0.14285714285714285
+      },
+      "Bert": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 0,
+        "missed": 1,
+        "detection_rate": 0.0
+      },
+      "BillGates": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 0,
+        "missed": 1,
+        "detection_rate": 0.0
+      },
+      "BrickStorm": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "CatStorm": {
+        "total": 3,
+        "training": 1,
+        "unknown_test": 2,
+        "training_fraction_actual": 0.3333333333333333,
+        "family_seen_in_training": true,
+        "detected": 2,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "ChinaZ": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 0,
+        "missed": 1,
+        "detection_rate": 0.0
+      },
+      "CoinMiner": {
+        "total": 4,
+        "training": 1,
+        "unknown_test": 3,
+        "training_fraction_actual": 0.25,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 2,
+        "detection_rate": 0.3333333333333333
+      },
+      "DDoSAgent": {
+        "total": 5,
+        "training": 1,
+        "unknown_test": 4,
+        "training_fraction_actual": 0.2,
+        "family_seen_in_training": true,
+        "detected": 2,
+        "missed": 2,
+        "detection_rate": 0.5
+      },
+      "DDoSTF": {
+        "total": 3,
+        "training": 1,
+        "unknown_test": 2,
+        "training_fraction_actual": 0.3333333333333333,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 1,
+        "detection_rate": 0.5
+      },
+      "DeskRAT": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "FlylegitBot": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 0,
+        "missed": 1,
+        "detection_rate": 0.0
+      },
+      "Gafgyt": {
+        "total": 25,
+        "training": 2,
+        "unknown_test": 23,
+        "training_fraction_actual": 0.08,
+        "family_seen_in_training": true,
+        "detected": 15,
+        "missed": 8,
+        "detection_rate": 0.6521739130434783
+      },
+      "GetShell": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 0,
+        "missed": 1,
+        "detection_rate": 0.0
+      },
+      "Gunra": {
+        "total": 4,
+        "training": 1,
+        "unknown_test": 3,
+        "training_fraction_actual": 0.25,
+        "family_seen_in_training": true,
+        "detected": 3,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "INC": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 0,
+        "missed": 1,
+        "detection_rate": 0.0
+      },
+      "JackSkid": {
+        "total": 13,
+        "training": 1,
+        "unknown_test": 12,
+        "training_fraction_actual": 0.07692307692307693,
+        "family_seen_in_training": true,
+        "detected": 3,
+        "missed": 9,
+        "detection_rate": 0.25
+      },
+      "Katana": {
+        "total": 10,
+        "training": 1,
+        "unknown_test": 9,
+        "training_fraction_actual": 0.1,
+        "family_seen_in_training": true,
+        "detected": 6,
+        "missed": 3,
+        "detection_rate": 0.6666666666666666
+      },
+      "Kimwolf": {
+        "total": 5,
+        "training": 1,
+        "unknown_test": 4,
+        "training_fraction_actual": 0.2,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 3,
+        "detection_rate": 0.25
+      },
+      "LockBit": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 0,
+        "missed": 1,
+        "detection_rate": 0.0
+      },
+      "Mirai": {
+        "total": 103,
+        "training": 10,
+        "unknown_test": 93,
+        "training_fraction_actual": 0.0970873786407767,
+        "family_seen_in_training": true,
+        "detected": 56,
+        "missed": 37,
+        "detection_rate": 0.6021505376344086
+      },
+      "MossadProxy": {
+        "total": 8,
+        "training": 1,
+        "unknown_test": 7,
+        "training_fraction_actual": 0.125,
+        "family_seen_in_training": true,
+        "detected": 5,
+        "missed": 2,
+        "detection_rate": 0.7142857142857143
+      },
+      "Nitrogen": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 0,
+        "missed": 1,
+        "detection_rate": 0.0
+      },
+      "NoEscape": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Prometei": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "PromptLock": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Qilin": {
+        "total": 4,
+        "training": 1,
+        "unknown_test": 3,
+        "training_fraction_actual": 0.25,
+        "family_seen_in_training": true,
+        "detected": 3,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Vibenet": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 0,
+        "missed": 1,
+        "detection_rate": 0.0
+      },
+      "XorDDoS": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 0,
+        "missed": 1,
+        "detection_rate": 0.0
+      },
+      "unassigned": {
+        "total": 8,
+        "training": 1,
+        "unknown_test": 7,
+        "training_fraction_actual": 0.125,
+        "family_seen_in_training": true,
+        "detected": 6,
+        "missed": 1,
+        "detection_rate": 0.8571428571428571
+      }
+    },
+    "host": {
+      "Akira": {
+        "total": 8,
+        "training": 1,
+        "unknown_test": 7,
+        "training_fraction_actual": 0.125,
+        "family_seen_in_training": true,
+        "detected": 7,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Bert": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "BillGates": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "BrickStorm": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "CatStorm": {
+        "total": 3,
+        "training": 1,
+        "unknown_test": 2,
+        "training_fraction_actual": 0.3333333333333333,
+        "family_seen_in_training": true,
+        "detected": 2,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "ChinaZ": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 0,
+        "missed": 1,
+        "detection_rate": 0.0
+      },
+      "CoinMiner": {
+        "total": 4,
+        "training": 1,
+        "unknown_test": 3,
+        "training_fraction_actual": 0.25,
+        "family_seen_in_training": true,
+        "detected": 3,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "DDoSAgent": {
+        "total": 5,
+        "training": 1,
+        "unknown_test": 4,
+        "training_fraction_actual": 0.2,
+        "family_seen_in_training": true,
+        "detected": 4,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "DDoSTF": {
+        "total": 3,
+        "training": 1,
+        "unknown_test": 2,
+        "training_fraction_actual": 0.3333333333333333,
+        "family_seen_in_training": true,
+        "detected": 2,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "DeskRAT": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "FlylegitBot": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Gafgyt": {
+        "total": 25,
+        "training": 2,
+        "unknown_test": 23,
+        "training_fraction_actual": 0.08,
+        "family_seen_in_training": true,
+        "detected": 23,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "GetShell": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Gunra": {
+        "total": 4,
+        "training": 1,
+        "unknown_test": 3,
+        "training_fraction_actual": 0.25,
+        "family_seen_in_training": true,
+        "detected": 3,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "INC": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "JackSkid": {
+        "total": 13,
+        "training": 1,
+        "unknown_test": 12,
+        "training_fraction_actual": 0.07692307692307693,
+        "family_seen_in_training": true,
+        "detected": 12,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Katana": {
+        "total": 10,
+        "training": 1,
+        "unknown_test": 9,
+        "training_fraction_actual": 0.1,
+        "family_seen_in_training": true,
+        "detected": 9,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Kimwolf": {
+        "total": 5,
+        "training": 1,
+        "unknown_test": 4,
+        "training_fraction_actual": 0.2,
+        "family_seen_in_training": true,
+        "detected": 4,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "LockBit": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Mirai": {
+        "total": 103,
+        "training": 10,
+        "unknown_test": 93,
+        "training_fraction_actual": 0.0970873786407767,
+        "family_seen_in_training": true,
+        "detected": 93,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "MossadProxy": {
+        "total": 8,
+        "training": 1,
+        "unknown_test": 7,
+        "training_fraction_actual": 0.125,
+        "family_seen_in_training": true,
+        "detected": 7,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Nitrogen": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "NoEscape": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Prometei": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "PromptLock": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Qilin": {
+        "total": 4,
+        "training": 1,
+        "unknown_test": 3,
+        "training_fraction_actual": 0.25,
+        "family_seen_in_training": true,
+        "detected": 3,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Vibenet": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "XorDDoS": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "unassigned": {
+        "total": 8,
+        "training": 1,
+        "unknown_test": 7,
+        "training_fraction_actual": 0.125,
+        "family_seen_in_training": true,
+        "detected": 7,
+        "missed": 0,
+        "detection_rate": 1.0
+      }
+    },
+    "hybrid": {
+      "Akira": {
+        "total": 8,
+        "training": 1,
+        "unknown_test": 7,
+        "training_fraction_actual": 0.125,
+        "family_seen_in_training": true,
+        "detected": 7,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Bert": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "BillGates": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "BrickStorm": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "CatStorm": {
+        "total": 3,
+        "training": 1,
+        "unknown_test": 2,
+        "training_fraction_actual": 0.3333333333333333,
+        "family_seen_in_training": true,
+        "detected": 2,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "ChinaZ": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 0,
+        "missed": 1,
+        "detection_rate": 0.0
+      },
+      "CoinMiner": {
+        "total": 4,
+        "training": 1,
+        "unknown_test": 3,
+        "training_fraction_actual": 0.25,
+        "family_seen_in_training": true,
+        "detected": 3,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "DDoSAgent": {
+        "total": 5,
+        "training": 1,
+        "unknown_test": 4,
+        "training_fraction_actual": 0.2,
+        "family_seen_in_training": true,
+        "detected": 4,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "DDoSTF": {
+        "total": 3,
+        "training": 1,
+        "unknown_test": 2,
+        "training_fraction_actual": 0.3333333333333333,
+        "family_seen_in_training": true,
+        "detected": 2,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "DeskRAT": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "FlylegitBot": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Gafgyt": {
+        "total": 25,
+        "training": 2,
+        "unknown_test": 23,
+        "training_fraction_actual": 0.08,
+        "family_seen_in_training": true,
+        "detected": 23,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "GetShell": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Gunra": {
+        "total": 4,
+        "training": 1,
+        "unknown_test": 3,
+        "training_fraction_actual": 0.25,
+        "family_seen_in_training": true,
+        "detected": 3,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "INC": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "JackSkid": {
+        "total": 13,
+        "training": 1,
+        "unknown_test": 12,
+        "training_fraction_actual": 0.07692307692307693,
+        "family_seen_in_training": true,
+        "detected": 12,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Katana": {
+        "total": 10,
+        "training": 1,
+        "unknown_test": 9,
+        "training_fraction_actual": 0.1,
+        "family_seen_in_training": true,
+        "detected": 9,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Kimwolf": {
+        "total": 5,
+        "training": 1,
+        "unknown_test": 4,
+        "training_fraction_actual": 0.2,
+        "family_seen_in_training": true,
+        "detected": 4,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "LockBit": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Mirai": {
+        "total": 103,
+        "training": 10,
+        "unknown_test": 93,
+        "training_fraction_actual": 0.0970873786407767,
+        "family_seen_in_training": true,
+        "detected": 93,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "MossadProxy": {
+        "total": 8,
+        "training": 1,
+        "unknown_test": 7,
+        "training_fraction_actual": 0.125,
+        "family_seen_in_training": true,
+        "detected": 7,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Nitrogen": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "NoEscape": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Prometei": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "PromptLock": {
+        "total": 1,
+        "training": 0,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.0,
+        "family_seen_in_training": false,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Qilin": {
+        "total": 4,
+        "training": 1,
+        "unknown_test": 3,
+        "training_fraction_actual": 0.25,
+        "family_seen_in_training": true,
+        "detected": 3,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "Vibenet": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "XorDDoS": {
+        "total": 2,
+        "training": 1,
+        "unknown_test": 1,
+        "training_fraction_actual": 0.5,
+        "family_seen_in_training": true,
+        "detected": 1,
+        "missed": 0,
+        "detection_rate": 1.0
+      },
+      "unassigned": {
+        "total": 8,
+        "training": 1,
+        "unknown_test": 7,
+        "training_fraction_actual": 0.125,
+        "family_seen_in_training": true,
+        "detected": 7,
+        "missed": 0,
+        "detection_rate": 1.0
+      }
+    }
+  },
+  "malware_dataset": "/home/ali/Desktop/Hazim/vbox-runs/hybrid-rf-study-20261010/data/malware/revision4/family-heldout-balanced-224-v1-20261014/labeled_sample_dataset_full_35host_9network.csv",
+  "p4_dataset": "/home/ali/Desktop/Hazim/vbox-runs/hybrid-rf-study-20261010/data/malware/revision4/full-cohort-feature-pool-20261016/p4_pcap_reconstructed_labeled_sample_dataset.csv",
+  "scenario_dataset": "/home/ali/Desktop/Hazim/vbox-runs/hybrid-rf-study-20261010/data/hybrid_scenarios/v7/p4_family_breadth_20261014/p4_emulated_scenario_dataset.csv"
+}

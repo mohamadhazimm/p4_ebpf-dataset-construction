@@ -1,0 +1,2665 @@
+{
+  "evaluation": "repeated simulation-augmentation comparison with grouped calibration and held-out real benign samples",
+  "seeds": [
+    42
+  ],
+  "folds_for_threshold_calibration": 3,
+  "trees_per_random_forest": 30,
+  "malware_train_fraction_requested": 0.1,
+  "benign_test_fraction_requested": 0.5,
+  "malware_split_rule": "Per family, train max(1, floor(fraction*n)) while retaining a test sample; singleton families remain test-only.",
+  "benign_split_rule": "GroupShuffleSplit by package_group, independently repeated for each seed.",
+  "threshold_rule": "Select threshold maximizing balanced accuracy on grouped OOF predictions for real training malware and real training benign samples only; ties prefer closest to 0.5.",
+  "training_comparison": {
+    "without_simulations": "10%-per-family real malware training subset plus real benign training groups",
+    "with_simulations": "same real training split plus all 84 self-generated scenario rows",
+    "simulation_label_counts": {
+      "attack_simulation": 28,
+      "benign_control": 56
+    }
+  },
+  "feature_sets": {
+    "network": {
+      "p4_signal_families": 29,
+      "columns": 145
+    },
+    "host": {
+      "ebpf_signal_families": 34,
+      "columns": 170
+    },
+    "hybrid_full": {
+      "network_families": 29,
+      "host_families": 34,
+      "columns": 315
+    },
+    "hybrid_balanced_50_50": {
+      "network_signal_families": 29,
+      "host_signal_families_selected": 29,
+      "host_selection": "training-only mean mutual information across each signal's five summaries",
+      "columns": 290
+    }
+  },
+  "p4_reconstruction": {
+    "dataset": "/home/ali/Desktop/Hazim/vbox-runs/hybrid-rf-study-20261010/data/malware/revision4/full-cohort-feature-pool-20261016/p4_pcap_reconstructed_labeled_sample_dataset.csv",
+    "method_counts": {
+      "duration_weighted_counter_consistent_assignments": 112,
+      "unique_packet_window_assignment": 250
+    },
+    "network_features_reconstructed_offline_from_pcap": true
+  },
+  "source_separability_audit": {
+    "purpose": "Grouped OOF check whether the same numeric features distinguish real malware training samples from simulated attacks.",
+    "metrics": {
+      "network": {
+        "real_malware_samples": 30,
+        "simulated_attack_samples": 28,
+        "source_label_1": "simulated_attack",
+        "source_label_0": "real_malware",
+        "grouped_oof_metrics": {
+          "accuracy": 0.8103448275862069,
+          "balanced_accuracy": 0.8119047619047619,
+          "precision": 0.7741935483870968,
+          "recall": 0.8571428571428571,
+          "f1": 0.8135593220338984,
+          "roc_auc": 0.8869047619047619,
+          "tn": 23,
+          "fp": 7,
+          "fn": 4,
+          "tp": 24
+        }
+      },
+      "host": {
+        "real_malware_samples": 30,
+        "simulated_attack_samples": 28,
+        "source_label_1": "simulated_attack",
+        "source_label_0": "real_malware",
+        "grouped_oof_metrics": {
+          "accuracy": 0.9655172413793104,
+          "balanced_accuracy": 0.9666666666666667,
+          "precision": 0.9333333333333333,
+          "recall": 1.0,
+          "f1": 0.9655172413793104,
+          "roc_auc": 0.9940476190476191,
+          "tn": 28,
+          "fp": 2,
+          "fn": 0,
+          "tp": 28
+        }
+      },
+      "hybrid_full": {
+        "real_malware_samples": 30,
+        "simulated_attack_samples": 28,
+        "source_label_1": "simulated_attack",
+        "source_label_0": "real_malware",
+        "grouped_oof_metrics": {
+          "accuracy": 0.9137931034482759,
+          "balanced_accuracy": 0.9166666666666667,
+          "precision": 0.8484848484848485,
+          "recall": 1.0,
+          "f1": 0.9180327868852459,
+          "roc_auc": 0.9952380952380951,
+          "tn": 25,
+          "fp": 5,
+          "fn": 0,
+          "tp": 28
+        }
+      },
+      "hybrid_balanced_50_50": {
+        "real_malware_samples": 30,
+        "simulated_attack_samples": 28,
+        "source_label_1": "simulated_attack",
+        "source_label_0": "real_malware",
+        "grouped_oof_metrics": {
+          "accuracy": 0.8620689655172413,
+          "balanced_accuracy": 0.8666666666666667,
+          "precision": 0.7777777777777778,
+          "recall": 1.0,
+          "f1": 0.875,
+          "roc_auc": 1.0,
+          "tn": 22,
+          "fp": 8,
+          "fn": 0,
+          "tp": 28
+        }
+      }
+    }
+  },
+  "split_audits": [
+    {
+      "seed": 42,
+      "malware_train": 30,
+      "malware_test": 194,
+      "benign_train": 68,
+      "benign_test": 70,
+      "benign_train_package_groups": 14,
+      "benign_test_package_groups": 14,
+      "benign_group_overlap": 0
+    }
+  ],
+  "comparisons": {
+    "network__simulations_off": {
+      "repeats": 1,
+      "per_seed": [
+        {
+          "seed": 42,
+          "model": "network",
+          "simulations_in_training": false,
+          "feature_count": 145,
+          "selected_host_signal_families": [],
+          "calibration": {
+            "method": "5-fold StratifiedGroupKFold OOF on real training samples only; optimize balanced accuracy",
+            "threshold": 0.34729420264903654,
+            "oof_balanced_accuracy": 0.7936274509803922,
+            "oof_sample_count": 98
+          },
+          "test_metrics": {
+            "accuracy": 0.875,
+            "balanced_accuracy": 0.8053755522827688,
+            "precision": 0.8851674641148325,
+            "recall": 0.9536082474226805,
+            "f1": 0.9181141439205955,
+            "roc_auc": 0.898379970544919,
+            "tn": 46,
+            "fp": 24,
+            "fn": 9,
+            "tp": 185
+          },
+          "malware_metrics": {
+            "samples": 194,
+            "detected": 185,
+            "missed": 9,
+            "detection_rate": 0.9536082474226805
+          },
+          "benign_metrics": {
+            "samples": 70,
+            "false_positives": 24,
+            "true_negatives": 46,
+            "false_positive_rate": 0.34285714285714286
+          },
+          "known_family_malware_metrics": {
+            "samples": 185,
+            "detected": 176,
+            "detection_rate": 0.9513513513513514
+          },
+          "unseen_family_malware_metrics": {
+            "samples": 9,
+            "detected": 9,
+            "detection_rate": 1.0
+          },
+          "per_family": {
+            "Akira": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            },
+            "Bert": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BillGates": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BrickStorm": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CatStorm": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "ChinaZ": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CoinMiner": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "DDoSAgent": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 0.75
+            },
+            "DDoSTF": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "DeskRAT": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "FlylegitBot": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Gafgyt": {
+              "total": 25,
+              "training": 2,
+              "unknown_test": 23,
+              "detection_rate": 0.8260869565217391
+            },
+            "GetShell": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Gunra": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "INC": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "JackSkid": {
+              "total": 13,
+              "training": 1,
+              "unknown_test": 12,
+              "detection_rate": 1.0
+            },
+            "Katana": {
+              "total": 10,
+              "training": 1,
+              "unknown_test": 9,
+              "detection_rate": 1.0
+            },
+            "Kimwolf": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 1.0
+            },
+            "LockBit": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Mirai": {
+              "total": 103,
+              "training": 10,
+              "unknown_test": 93,
+              "detection_rate": 0.956989247311828
+            },
+            "MossadProxy": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            },
+            "Nitrogen": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "NoEscape": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Prometei": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "PromptLock": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Qilin": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "Vibenet": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "XorDDoS": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "unassigned": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            }
+          }
+        }
+      ],
+      "mean_std": {
+        "test": {
+          "accuracy": {
+            "mean": 0.875,
+            "std": 0.0,
+            "values": [
+              0.875
+            ]
+          },
+          "balanced_accuracy": {
+            "mean": 0.8053755522827688,
+            "std": 0.0,
+            "values": [
+              0.8053755522827688
+            ]
+          },
+          "precision": {
+            "mean": 0.8851674641148325,
+            "std": 0.0,
+            "values": [
+              0.8851674641148325
+            ]
+          },
+          "recall": {
+            "mean": 0.9536082474226805,
+            "std": 0.0,
+            "values": [
+              0.9536082474226805
+            ]
+          },
+          "f1": {
+            "mean": 0.9181141439205955,
+            "std": 0.0,
+            "values": [
+              0.9181141439205955
+            ]
+          },
+          "roc_auc": {
+            "mean": 0.898379970544919,
+            "std": 0.0,
+            "values": [
+              0.898379970544919
+            ]
+          }
+        },
+        "malware": {
+          "detection_rate": {
+            "mean": 0.9536082474226805,
+            "std": 0.0,
+            "values": [
+              0.9536082474226805
+            ]
+          }
+        },
+        "benign": {
+          "false_positive_rate": {
+            "mean": 0.34285714285714286,
+            "std": 0.0,
+            "values": [
+              0.34285714285714286
+            ]
+          }
+        },
+        "threshold": {
+          "threshold": {
+            "mean": 0.34729420264903654,
+            "std": 0.0,
+            "values": [
+              0.34729420264903654
+            ]
+          },
+          "oof_balanced_accuracy": {
+            "mean": 0.7936274509803922,
+            "std": 0.0,
+            "values": [
+              0.7936274509803922
+            ]
+          }
+        }
+      }
+    },
+    "network__simulations_on": {
+      "repeats": 1,
+      "per_seed": [
+        {
+          "seed": 42,
+          "model": "network",
+          "simulations_in_training": true,
+          "feature_count": 145,
+          "selected_host_signal_families": [],
+          "calibration": {
+            "method": "5-fold StratifiedGroupKFold OOF on real training samples only; optimize balanced accuracy",
+            "threshold": 0.26722999281652177,
+            "oof_balanced_accuracy": 0.7676470588235295,
+            "oof_sample_count": 98
+          },
+          "test_metrics": {
+            "accuracy": 0.8712121212121212,
+            "balanced_accuracy": 0.7936671575846834,
+            "precision": 0.8773584905660378,
+            "recall": 0.9587628865979382,
+            "f1": 0.916256157635468,
+            "roc_auc": 0.8965390279823269,
+            "tn": 44,
+            "fp": 26,
+            "fn": 8,
+            "tp": 186
+          },
+          "malware_metrics": {
+            "samples": 194,
+            "detected": 186,
+            "missed": 8,
+            "detection_rate": 0.9587628865979382
+          },
+          "benign_metrics": {
+            "samples": 70,
+            "false_positives": 26,
+            "true_negatives": 44,
+            "false_positive_rate": 0.37142857142857144
+          },
+          "known_family_malware_metrics": {
+            "samples": 185,
+            "detected": 177,
+            "detection_rate": 0.9567567567567568
+          },
+          "unseen_family_malware_metrics": {
+            "samples": 9,
+            "detected": 9,
+            "detection_rate": 1.0
+          },
+          "per_family": {
+            "Akira": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            },
+            "Bert": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BillGates": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BrickStorm": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CatStorm": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "ChinaZ": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CoinMiner": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "DDoSAgent": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 0.75
+            },
+            "DDoSTF": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "DeskRAT": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "FlylegitBot": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Gafgyt": {
+              "total": 25,
+              "training": 2,
+              "unknown_test": 23,
+              "detection_rate": 0.8260869565217391
+            },
+            "GetShell": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Gunra": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "INC": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "JackSkid": {
+              "total": 13,
+              "training": 1,
+              "unknown_test": 12,
+              "detection_rate": 1.0
+            },
+            "Katana": {
+              "total": 10,
+              "training": 1,
+              "unknown_test": 9,
+              "detection_rate": 1.0
+            },
+            "Kimwolf": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 1.0
+            },
+            "LockBit": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Mirai": {
+              "total": 103,
+              "training": 10,
+              "unknown_test": 93,
+              "detection_rate": 0.967741935483871
+            },
+            "MossadProxy": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            },
+            "Nitrogen": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "NoEscape": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Prometei": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "PromptLock": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Qilin": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "Vibenet": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "XorDDoS": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "unassigned": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            }
+          }
+        }
+      ],
+      "mean_std": {
+        "test": {
+          "accuracy": {
+            "mean": 0.8712121212121212,
+            "std": 0.0,
+            "values": [
+              0.8712121212121212
+            ]
+          },
+          "balanced_accuracy": {
+            "mean": 0.7936671575846834,
+            "std": 0.0,
+            "values": [
+              0.7936671575846834
+            ]
+          },
+          "precision": {
+            "mean": 0.8773584905660378,
+            "std": 0.0,
+            "values": [
+              0.8773584905660378
+            ]
+          },
+          "recall": {
+            "mean": 0.9587628865979382,
+            "std": 0.0,
+            "values": [
+              0.9587628865979382
+            ]
+          },
+          "f1": {
+            "mean": 0.916256157635468,
+            "std": 0.0,
+            "values": [
+              0.916256157635468
+            ]
+          },
+          "roc_auc": {
+            "mean": 0.8965390279823269,
+            "std": 0.0,
+            "values": [
+              0.8965390279823269
+            ]
+          }
+        },
+        "malware": {
+          "detection_rate": {
+            "mean": 0.9587628865979382,
+            "std": 0.0,
+            "values": [
+              0.9587628865979382
+            ]
+          }
+        },
+        "benign": {
+          "false_positive_rate": {
+            "mean": 0.37142857142857144,
+            "std": 0.0,
+            "values": [
+              0.37142857142857144
+            ]
+          }
+        },
+        "threshold": {
+          "threshold": {
+            "mean": 0.26722999281652177,
+            "std": 0.0,
+            "values": [
+              0.26722999281652177
+            ]
+          },
+          "oof_balanced_accuracy": {
+            "mean": 0.7676470588235295,
+            "std": 0.0,
+            "values": [
+              0.7676470588235295
+            ]
+          }
+        }
+      }
+    },
+    "host__simulations_off": {
+      "repeats": 1,
+      "per_seed": [
+        {
+          "seed": 42,
+          "model": "host",
+          "simulations_in_training": false,
+          "feature_count": 170,
+          "selected_host_signal_families": [],
+          "calibration": {
+            "method": "5-fold StratifiedGroupKFold OOF on real training samples only; optimize balanced accuracy",
+            "threshold": 0.4666666666666667,
+            "oof_balanced_accuracy": 0.9833333333333334,
+            "oof_sample_count": 98
+          },
+          "test_metrics": {
+            "accuracy": 0.9621212121212122,
+            "balanced_accuracy": 0.9559646539027982,
+            "precision": 0.9791666666666666,
+            "recall": 0.9690721649484536,
+            "f1": 0.9740932642487047,
+            "roc_auc": 0.991899852724595,
+            "tn": 66,
+            "fp": 4,
+            "fn": 6,
+            "tp": 188
+          },
+          "malware_metrics": {
+            "samples": 194,
+            "detected": 188,
+            "missed": 6,
+            "detection_rate": 0.9690721649484536
+          },
+          "benign_metrics": {
+            "samples": 70,
+            "false_positives": 4,
+            "true_negatives": 66,
+            "false_positive_rate": 0.05714285714285714
+          },
+          "known_family_malware_metrics": {
+            "samples": 185,
+            "detected": 180,
+            "detection_rate": 0.972972972972973
+          },
+          "unseen_family_malware_metrics": {
+            "samples": 9,
+            "detected": 8,
+            "detection_rate": 0.8888888888888888
+          },
+          "per_family": {
+            "Akira": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 0.8571428571428571
+            },
+            "Bert": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 0.0
+            },
+            "BillGates": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BrickStorm": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CatStorm": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "ChinaZ": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CoinMiner": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "DDoSAgent": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 1.0
+            },
+            "DDoSTF": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "DeskRAT": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "FlylegitBot": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 0.0
+            },
+            "Gafgyt": {
+              "total": 25,
+              "training": 2,
+              "unknown_test": 23,
+              "detection_rate": 1.0
+            },
+            "GetShell": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Gunra": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "INC": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "JackSkid": {
+              "total": 13,
+              "training": 1,
+              "unknown_test": 12,
+              "detection_rate": 1.0
+            },
+            "Katana": {
+              "total": 10,
+              "training": 1,
+              "unknown_test": 9,
+              "detection_rate": 1.0
+            },
+            "Kimwolf": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 1.0
+            },
+            "LockBit": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Mirai": {
+              "total": 103,
+              "training": 10,
+              "unknown_test": 93,
+              "detection_rate": 0.967741935483871
+            },
+            "MossadProxy": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            },
+            "Nitrogen": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "NoEscape": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Prometei": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "PromptLock": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Qilin": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "Vibenet": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "XorDDoS": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "unassigned": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            }
+          }
+        }
+      ],
+      "mean_std": {
+        "test": {
+          "accuracy": {
+            "mean": 0.9621212121212122,
+            "std": 0.0,
+            "values": [
+              0.9621212121212122
+            ]
+          },
+          "balanced_accuracy": {
+            "mean": 0.9559646539027982,
+            "std": 0.0,
+            "values": [
+              0.9559646539027982
+            ]
+          },
+          "precision": {
+            "mean": 0.9791666666666666,
+            "std": 0.0,
+            "values": [
+              0.9791666666666666
+            ]
+          },
+          "recall": {
+            "mean": 0.9690721649484536,
+            "std": 0.0,
+            "values": [
+              0.9690721649484536
+            ]
+          },
+          "f1": {
+            "mean": 0.9740932642487047,
+            "std": 0.0,
+            "values": [
+              0.9740932642487047
+            ]
+          },
+          "roc_auc": {
+            "mean": 0.991899852724595,
+            "std": 0.0,
+            "values": [
+              0.991899852724595
+            ]
+          }
+        },
+        "malware": {
+          "detection_rate": {
+            "mean": 0.9690721649484536,
+            "std": 0.0,
+            "values": [
+              0.9690721649484536
+            ]
+          }
+        },
+        "benign": {
+          "false_positive_rate": {
+            "mean": 0.05714285714285714,
+            "std": 0.0,
+            "values": [
+              0.05714285714285714
+            ]
+          }
+        },
+        "threshold": {
+          "threshold": {
+            "mean": 0.4666666666666667,
+            "std": 0.0,
+            "values": [
+              0.4666666666666667
+            ]
+          },
+          "oof_balanced_accuracy": {
+            "mean": 0.9833333333333334,
+            "std": 0.0,
+            "values": [
+              0.9833333333333334
+            ]
+          }
+        }
+      }
+    },
+    "host__simulations_on": {
+      "repeats": 1,
+      "per_seed": [
+        {
+          "seed": 42,
+          "model": "host",
+          "simulations_in_training": true,
+          "feature_count": 170,
+          "selected_host_signal_families": [],
+          "calibration": {
+            "method": "5-fold StratifiedGroupKFold OOF on real training samples only; optimize balanced accuracy",
+            "threshold": 0.3182212858936906,
+            "oof_balanced_accuracy": 0.9666666666666667,
+            "oof_sample_count": 98
+          },
+          "test_metrics": {
+            "accuracy": 0.946969696969697,
+            "balanced_accuracy": 0.9365243004418262,
+            "precision": 0.96875,
+            "recall": 0.9587628865979382,
+            "f1": 0.9637305699481865,
+            "roc_auc": 0.9872606774668631,
+            "tn": 64,
+            "fp": 6,
+            "fn": 8,
+            "tp": 186
+          },
+          "malware_metrics": {
+            "samples": 194,
+            "detected": 186,
+            "missed": 8,
+            "detection_rate": 0.9587628865979382
+          },
+          "benign_metrics": {
+            "samples": 70,
+            "false_positives": 6,
+            "true_negatives": 64,
+            "false_positive_rate": 0.08571428571428572
+          },
+          "known_family_malware_metrics": {
+            "samples": 185,
+            "detected": 179,
+            "detection_rate": 0.9675675675675676
+          },
+          "unseen_family_malware_metrics": {
+            "samples": 9,
+            "detected": 7,
+            "detection_rate": 0.7777777777777778
+          },
+          "per_family": {
+            "Akira": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 0.8571428571428571
+            },
+            "Bert": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BillGates": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BrickStorm": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CatStorm": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "ChinaZ": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 0.0
+            },
+            "CoinMiner": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "DDoSAgent": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 0.75
+            },
+            "DDoSTF": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "DeskRAT": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "FlylegitBot": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 0.0
+            },
+            "Gafgyt": {
+              "total": 25,
+              "training": 2,
+              "unknown_test": 23,
+              "detection_rate": 1.0
+            },
+            "GetShell": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Gunra": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "INC": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "JackSkid": {
+              "total": 13,
+              "training": 1,
+              "unknown_test": 12,
+              "detection_rate": 1.0
+            },
+            "Katana": {
+              "total": 10,
+              "training": 1,
+              "unknown_test": 9,
+              "detection_rate": 1.0
+            },
+            "Kimwolf": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 1.0
+            },
+            "LockBit": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Mirai": {
+              "total": 103,
+              "training": 10,
+              "unknown_test": 93,
+              "detection_rate": 0.956989247311828
+            },
+            "MossadProxy": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            },
+            "Nitrogen": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "NoEscape": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Prometei": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "PromptLock": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Qilin": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "Vibenet": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "XorDDoS": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "unassigned": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            }
+          }
+        }
+      ],
+      "mean_std": {
+        "test": {
+          "accuracy": {
+            "mean": 0.946969696969697,
+            "std": 0.0,
+            "values": [
+              0.946969696969697
+            ]
+          },
+          "balanced_accuracy": {
+            "mean": 0.9365243004418262,
+            "std": 0.0,
+            "values": [
+              0.9365243004418262
+            ]
+          },
+          "precision": {
+            "mean": 0.96875,
+            "std": 0.0,
+            "values": [
+              0.96875
+            ]
+          },
+          "recall": {
+            "mean": 0.9587628865979382,
+            "std": 0.0,
+            "values": [
+              0.9587628865979382
+            ]
+          },
+          "f1": {
+            "mean": 0.9637305699481865,
+            "std": 0.0,
+            "values": [
+              0.9637305699481865
+            ]
+          },
+          "roc_auc": {
+            "mean": 0.9872606774668631,
+            "std": 0.0,
+            "values": [
+              0.9872606774668631
+            ]
+          }
+        },
+        "malware": {
+          "detection_rate": {
+            "mean": 0.9587628865979382,
+            "std": 0.0,
+            "values": [
+              0.9587628865979382
+            ]
+          }
+        },
+        "benign": {
+          "false_positive_rate": {
+            "mean": 0.08571428571428572,
+            "std": 0.0,
+            "values": [
+              0.08571428571428572
+            ]
+          }
+        },
+        "threshold": {
+          "threshold": {
+            "mean": 0.3182212858936906,
+            "std": 0.0,
+            "values": [
+              0.3182212858936906
+            ]
+          },
+          "oof_balanced_accuracy": {
+            "mean": 0.9666666666666667,
+            "std": 0.0,
+            "values": [
+              0.9666666666666667
+            ]
+          }
+        }
+      }
+    },
+    "hybrid_full__simulations_off": {
+      "repeats": 1,
+      "per_seed": [
+        {
+          "seed": 42,
+          "model": "hybrid_full",
+          "simulations_in_training": false,
+          "feature_count": 315,
+          "selected_host_signal_families": [],
+          "calibration": {
+            "method": "5-fold StratifiedGroupKFold OOF on real training samples only; optimize balanced accuracy",
+            "threshold": 0.445694799658994,
+            "oof_balanced_accuracy": 0.9833333333333334,
+            "oof_sample_count": 98
+          },
+          "test_metrics": {
+            "accuracy": 0.9621212121212122,
+            "balanced_accuracy": 0.9696612665684832,
+            "precision": 0.9946236559139785,
+            "recall": 0.9536082474226805,
+            "f1": 0.9736842105263158,
+            "roc_auc": 0.9950662739322533,
+            "tn": 69,
+            "fp": 1,
+            "fn": 9,
+            "tp": 185
+          },
+          "malware_metrics": {
+            "samples": 194,
+            "detected": 185,
+            "missed": 9,
+            "detection_rate": 0.9536082474226805
+          },
+          "benign_metrics": {
+            "samples": 70,
+            "false_positives": 1,
+            "true_negatives": 69,
+            "false_positive_rate": 0.014285714285714285
+          },
+          "known_family_malware_metrics": {
+            "samples": 185,
+            "detected": 177,
+            "detection_rate": 0.9567567567567568
+          },
+          "unseen_family_malware_metrics": {
+            "samples": 9,
+            "detected": 8,
+            "detection_rate": 0.8888888888888888
+          },
+          "per_family": {
+            "Akira": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 0.8571428571428571
+            },
+            "Bert": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BillGates": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BrickStorm": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CatStorm": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "ChinaZ": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CoinMiner": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "DDoSAgent": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 0.75
+            },
+            "DDoSTF": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "DeskRAT": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "FlylegitBot": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 0.0
+            },
+            "Gafgyt": {
+              "total": 25,
+              "training": 2,
+              "unknown_test": 23,
+              "detection_rate": 1.0
+            },
+            "GetShell": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Gunra": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "INC": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "JackSkid": {
+              "total": 13,
+              "training": 1,
+              "unknown_test": 12,
+              "detection_rate": 1.0
+            },
+            "Katana": {
+              "total": 10,
+              "training": 1,
+              "unknown_test": 9,
+              "detection_rate": 1.0
+            },
+            "Kimwolf": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 1.0
+            },
+            "LockBit": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Mirai": {
+              "total": 103,
+              "training": 10,
+              "unknown_test": 93,
+              "detection_rate": 0.9354838709677419
+            },
+            "MossadProxy": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            },
+            "Nitrogen": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "NoEscape": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Prometei": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "PromptLock": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Qilin": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "Vibenet": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "XorDDoS": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "unassigned": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            }
+          }
+        }
+      ],
+      "mean_std": {
+        "test": {
+          "accuracy": {
+            "mean": 0.9621212121212122,
+            "std": 0.0,
+            "values": [
+              0.9621212121212122
+            ]
+          },
+          "balanced_accuracy": {
+            "mean": 0.9696612665684832,
+            "std": 0.0,
+            "values": [
+              0.9696612665684832
+            ]
+          },
+          "precision": {
+            "mean": 0.9946236559139785,
+            "std": 0.0,
+            "values": [
+              0.9946236559139785
+            ]
+          },
+          "recall": {
+            "mean": 0.9536082474226805,
+            "std": 0.0,
+            "values": [
+              0.9536082474226805
+            ]
+          },
+          "f1": {
+            "mean": 0.9736842105263158,
+            "std": 0.0,
+            "values": [
+              0.9736842105263158
+            ]
+          },
+          "roc_auc": {
+            "mean": 0.9950662739322533,
+            "std": 0.0,
+            "values": [
+              0.9950662739322533
+            ]
+          }
+        },
+        "malware": {
+          "detection_rate": {
+            "mean": 0.9536082474226805,
+            "std": 0.0,
+            "values": [
+              0.9536082474226805
+            ]
+          }
+        },
+        "benign": {
+          "false_positive_rate": {
+            "mean": 0.014285714285714285,
+            "std": 0.0,
+            "values": [
+              0.014285714285714285
+            ]
+          }
+        },
+        "threshold": {
+          "threshold": {
+            "mean": 0.445694799658994,
+            "std": 0.0,
+            "values": [
+              0.445694799658994
+            ]
+          },
+          "oof_balanced_accuracy": {
+            "mean": 0.9833333333333334,
+            "std": 0.0,
+            "values": [
+              0.9833333333333334
+            ]
+          }
+        }
+      }
+    },
+    "hybrid_full__simulations_on": {
+      "repeats": 1,
+      "per_seed": [
+        {
+          "seed": 42,
+          "model": "hybrid_full",
+          "simulations_in_training": true,
+          "feature_count": 315,
+          "selected_host_signal_families": [],
+          "calibration": {
+            "method": "5-fold StratifiedGroupKFold OOF on real training samples only; optimize balanced accuracy",
+            "threshold": 0.2059204750276179,
+            "oof_balanced_accuracy": 0.9612745098039216,
+            "oof_sample_count": 98
+          },
+          "test_metrics": {
+            "accuracy": 0.9431818181818182,
+            "balanced_accuracy": 0.9156848306332842,
+            "precision": 0.949748743718593,
+            "recall": 0.9742268041237113,
+            "f1": 0.9618320610687023,
+            "roc_auc": 0.9831001472754051,
+            "tn": 60,
+            "fp": 10,
+            "fn": 5,
+            "tp": 189
+          },
+          "malware_metrics": {
+            "samples": 194,
+            "detected": 189,
+            "missed": 5,
+            "detection_rate": 0.9742268041237113
+          },
+          "benign_metrics": {
+            "samples": 70,
+            "false_positives": 10,
+            "true_negatives": 60,
+            "false_positive_rate": 0.14285714285714285
+          },
+          "known_family_malware_metrics": {
+            "samples": 185,
+            "detected": 181,
+            "detection_rate": 0.9783783783783784
+          },
+          "unseen_family_malware_metrics": {
+            "samples": 9,
+            "detected": 8,
+            "detection_rate": 0.8888888888888888
+          },
+          "per_family": {
+            "Akira": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            },
+            "Bert": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BillGates": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BrickStorm": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CatStorm": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "ChinaZ": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CoinMiner": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "DDoSAgent": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 0.75
+            },
+            "DDoSTF": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "DeskRAT": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "FlylegitBot": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 0.0
+            },
+            "Gafgyt": {
+              "total": 25,
+              "training": 2,
+              "unknown_test": 23,
+              "detection_rate": 1.0
+            },
+            "GetShell": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Gunra": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "INC": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "JackSkid": {
+              "total": 13,
+              "training": 1,
+              "unknown_test": 12,
+              "detection_rate": 1.0
+            },
+            "Katana": {
+              "total": 10,
+              "training": 1,
+              "unknown_test": 9,
+              "detection_rate": 1.0
+            },
+            "Kimwolf": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 1.0
+            },
+            "LockBit": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Mirai": {
+              "total": 103,
+              "training": 10,
+              "unknown_test": 93,
+              "detection_rate": 0.967741935483871
+            },
+            "MossadProxy": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            },
+            "Nitrogen": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "NoEscape": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Prometei": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "PromptLock": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Qilin": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "Vibenet": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "XorDDoS": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "unassigned": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            }
+          }
+        }
+      ],
+      "mean_std": {
+        "test": {
+          "accuracy": {
+            "mean": 0.9431818181818182,
+            "std": 0.0,
+            "values": [
+              0.9431818181818182
+            ]
+          },
+          "balanced_accuracy": {
+            "mean": 0.9156848306332842,
+            "std": 0.0,
+            "values": [
+              0.9156848306332842
+            ]
+          },
+          "precision": {
+            "mean": 0.949748743718593,
+            "std": 0.0,
+            "values": [
+              0.949748743718593
+            ]
+          },
+          "recall": {
+            "mean": 0.9742268041237113,
+            "std": 0.0,
+            "values": [
+              0.9742268041237113
+            ]
+          },
+          "f1": {
+            "mean": 0.9618320610687023,
+            "std": 0.0,
+            "values": [
+              0.9618320610687023
+            ]
+          },
+          "roc_auc": {
+            "mean": 0.9831001472754051,
+            "std": 0.0,
+            "values": [
+              0.9831001472754051
+            ]
+          }
+        },
+        "malware": {
+          "detection_rate": {
+            "mean": 0.9742268041237113,
+            "std": 0.0,
+            "values": [
+              0.9742268041237113
+            ]
+          }
+        },
+        "benign": {
+          "false_positive_rate": {
+            "mean": 0.14285714285714285,
+            "std": 0.0,
+            "values": [
+              0.14285714285714285
+            ]
+          }
+        },
+        "threshold": {
+          "threshold": {
+            "mean": 0.2059204750276179,
+            "std": 0.0,
+            "values": [
+              0.2059204750276179
+            ]
+          },
+          "oof_balanced_accuracy": {
+            "mean": 0.9612745098039216,
+            "std": 0.0,
+            "values": [
+              0.9612745098039216
+            ]
+          }
+        }
+      }
+    },
+    "hybrid_balanced_50_50__simulations_off": {
+      "repeats": 1,
+      "per_seed": [
+        {
+          "seed": 42,
+          "model": "hybrid_balanced_50_50",
+          "simulations_in_training": false,
+          "feature_count": 290,
+          "selected_host_signal_families": [
+            "host__ebpf_dup2_count",
+            "host__ebpf_openat_success_count",
+            "host__ebpf_close_count",
+            "host__ebpf_mmap_count",
+            "host__ebpf_mprotect_count",
+            "host__ebpf_file_write_bytes",
+            "host__ebpf_event_count",
+            "host__ebpf_exit_count",
+            "host__ebpf_fork_count",
+            "host__ebpf_file_write_success_count",
+            "host__ebpf_connect_count",
+            "host__ebpf_recvfrom_count",
+            "host__ebpf_socket_count",
+            "host__ebpf_openat_count",
+            "host__ebpf_sendto_count",
+            "host__ebpf_execve_count",
+            "host__ebpf_renameat2_count",
+            "host__ebpf_unlinkat_count",
+            "host__ebpf_openat2_success_count",
+            "host__ebpf_kill_count",
+            "host__ebpf_writev_count",
+            "host__ebpf_pwrite64_count",
+            "host__ebpf_renameat_count",
+            "host__ebpf_accept_count",
+            "host__ebpf_execveat_count",
+            "host__ebpf_accept4_count",
+            "host__ebpf_ptrace_count",
+            "host__ebpf_listen_count",
+            "host__ebpf_openat2_count"
+          ],
+          "calibration": {
+            "method": "5-fold StratifiedGroupKFold OOF on real training samples only; optimize balanced accuracy",
+            "threshold": 0.39806406474004685,
+            "oof_balanced_accuracy": 0.9833333333333334,
+            "oof_sample_count": 98
+          },
+          "test_metrics": {
+            "accuracy": 0.9621212121212122,
+            "balanced_accuracy": 0.9696612665684832,
+            "precision": 0.9946236559139785,
+            "recall": 0.9536082474226805,
+            "f1": 0.9736842105263158,
+            "roc_auc": 0.9952135493372607,
+            "tn": 69,
+            "fp": 1,
+            "fn": 9,
+            "tp": 185
+          },
+          "malware_metrics": {
+            "samples": 194,
+            "detected": 185,
+            "missed": 9,
+            "detection_rate": 0.9536082474226805
+          },
+          "benign_metrics": {
+            "samples": 70,
+            "false_positives": 1,
+            "true_negatives": 69,
+            "false_positive_rate": 0.014285714285714285
+          },
+          "known_family_malware_metrics": {
+            "samples": 185,
+            "detected": 177,
+            "detection_rate": 0.9567567567567568
+          },
+          "unseen_family_malware_metrics": {
+            "samples": 9,
+            "detected": 8,
+            "detection_rate": 0.8888888888888888
+          },
+          "per_family": {
+            "Akira": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 0.8571428571428571
+            },
+            "Bert": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BillGates": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BrickStorm": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CatStorm": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "ChinaZ": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CoinMiner": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "DDoSAgent": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 0.75
+            },
+            "DDoSTF": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "DeskRAT": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "FlylegitBot": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 0.0
+            },
+            "Gafgyt": {
+              "total": 25,
+              "training": 2,
+              "unknown_test": 23,
+              "detection_rate": 1.0
+            },
+            "GetShell": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Gunra": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "INC": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "JackSkid": {
+              "total": 13,
+              "training": 1,
+              "unknown_test": 12,
+              "detection_rate": 1.0
+            },
+            "Katana": {
+              "total": 10,
+              "training": 1,
+              "unknown_test": 9,
+              "detection_rate": 1.0
+            },
+            "Kimwolf": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 1.0
+            },
+            "LockBit": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Mirai": {
+              "total": 103,
+              "training": 10,
+              "unknown_test": 93,
+              "detection_rate": 0.9354838709677419
+            },
+            "MossadProxy": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            },
+            "Nitrogen": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "NoEscape": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Prometei": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "PromptLock": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Qilin": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "Vibenet": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "XorDDoS": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "unassigned": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            }
+          }
+        }
+      ],
+      "mean_std": {
+        "test": {
+          "accuracy": {
+            "mean": 0.9621212121212122,
+            "std": 0.0,
+            "values": [
+              0.9621212121212122
+            ]
+          },
+          "balanced_accuracy": {
+            "mean": 0.9696612665684832,
+            "std": 0.0,
+            "values": [
+              0.9696612665684832
+            ]
+          },
+          "precision": {
+            "mean": 0.9946236559139785,
+            "std": 0.0,
+            "values": [
+              0.9946236559139785
+            ]
+          },
+          "recall": {
+            "mean": 0.9536082474226805,
+            "std": 0.0,
+            "values": [
+              0.9536082474226805
+            ]
+          },
+          "f1": {
+            "mean": 0.9736842105263158,
+            "std": 0.0,
+            "values": [
+              0.9736842105263158
+            ]
+          },
+          "roc_auc": {
+            "mean": 0.9952135493372607,
+            "std": 0.0,
+            "values": [
+              0.9952135493372607
+            ]
+          }
+        },
+        "malware": {
+          "detection_rate": {
+            "mean": 0.9536082474226805,
+            "std": 0.0,
+            "values": [
+              0.9536082474226805
+            ]
+          }
+        },
+        "benign": {
+          "false_positive_rate": {
+            "mean": 0.014285714285714285,
+            "std": 0.0,
+            "values": [
+              0.014285714285714285
+            ]
+          }
+        },
+        "threshold": {
+          "threshold": {
+            "mean": 0.39806406474004685,
+            "std": 0.0,
+            "values": [
+              0.39806406474004685
+            ]
+          },
+          "oof_balanced_accuracy": {
+            "mean": 0.9833333333333334,
+            "std": 0.0,
+            "values": [
+              0.9833333333333334
+            ]
+          }
+        }
+      }
+    },
+    "hybrid_balanced_50_50__simulations_on": {
+      "repeats": 1,
+      "per_seed": [
+        {
+          "seed": 42,
+          "model": "hybrid_balanced_50_50",
+          "simulations_in_training": true,
+          "feature_count": 290,
+          "selected_host_signal_families": [
+            "host__ebpf_openat_success_count",
+            "host__ebpf_close_count",
+            "host__ebpf_event_count",
+            "host__ebpf_mprotect_count",
+            "host__ebpf_dup2_count",
+            "host__ebpf_mmap_count",
+            "host__ebpf_file_write_bytes",
+            "host__ebpf_file_write_success_count",
+            "host__ebpf_fork_count",
+            "host__ebpf_exit_count",
+            "host__ebpf_recvfrom_count",
+            "host__ebpf_writev_count",
+            "host__ebpf_pwrite64_count",
+            "host__ebpf_execveat_count",
+            "host__ebpf_socket_count",
+            "host__ebpf_openat_count",
+            "host__ebpf_accept_count",
+            "host__ebpf_openat2_count",
+            "host__ebpf_connect_count",
+            "host__ebpf_accept4_count",
+            "host__ebpf_execve_count",
+            "host__ebpf_file_pwrite64_success_count",
+            "host__ebpf_sendto_count",
+            "host__ebpf_dup3_count",
+            "host__ebpf_unlinkat_count",
+            "host__ebpf_kill_count",
+            "host__ebpf_bind_count",
+            "host__ebpf_write_count",
+            "host__ebpf_renameat_count"
+          ],
+          "calibration": {
+            "method": "5-fold StratifiedGroupKFold OOF on real training samples only; optimize balanced accuracy",
+            "threshold": 0.2703332478320443,
+            "oof_balanced_accuracy": 0.9666666666666667,
+            "oof_sample_count": 98
+          },
+          "test_metrics": {
+            "accuracy": 0.946969696969697,
+            "balanced_accuracy": 0.9228276877761414,
+            "precision": 0.9545454545454546,
+            "recall": 0.9742268041237113,
+            "f1": 0.9642857142857143,
+            "roc_auc": 0.9879970544918999,
+            "tn": 61,
+            "fp": 9,
+            "fn": 5,
+            "tp": 189
+          },
+          "malware_metrics": {
+            "samples": 194,
+            "detected": 189,
+            "missed": 5,
+            "detection_rate": 0.9742268041237113
+          },
+          "benign_metrics": {
+            "samples": 70,
+            "false_positives": 9,
+            "true_negatives": 61,
+            "false_positive_rate": 0.12857142857142856
+          },
+          "known_family_malware_metrics": {
+            "samples": 185,
+            "detected": 180,
+            "detection_rate": 0.972972972972973
+          },
+          "unseen_family_malware_metrics": {
+            "samples": 9,
+            "detected": 9,
+            "detection_rate": 1.0
+          },
+          "per_family": {
+            "Akira": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            },
+            "Bert": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BillGates": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "BrickStorm": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CatStorm": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "ChinaZ": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "CoinMiner": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "DDoSAgent": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 0.75
+            },
+            "DDoSTF": {
+              "total": 3,
+              "training": 1,
+              "unknown_test": 2,
+              "detection_rate": 1.0
+            },
+            "DeskRAT": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "FlylegitBot": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Gafgyt": {
+              "total": 25,
+              "training": 2,
+              "unknown_test": 23,
+              "detection_rate": 1.0
+            },
+            "GetShell": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Gunra": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "INC": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "JackSkid": {
+              "total": 13,
+              "training": 1,
+              "unknown_test": 12,
+              "detection_rate": 1.0
+            },
+            "Katana": {
+              "total": 10,
+              "training": 1,
+              "unknown_test": 9,
+              "detection_rate": 1.0
+            },
+            "Kimwolf": {
+              "total": 5,
+              "training": 1,
+              "unknown_test": 4,
+              "detection_rate": 1.0
+            },
+            "LockBit": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Mirai": {
+              "total": 103,
+              "training": 10,
+              "unknown_test": 93,
+              "detection_rate": 0.956989247311828
+            },
+            "MossadProxy": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            },
+            "Nitrogen": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "NoEscape": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Prometei": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "PromptLock": {
+              "total": 1,
+              "training": 0,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "Qilin": {
+              "total": 4,
+              "training": 1,
+              "unknown_test": 3,
+              "detection_rate": 1.0
+            },
+            "Vibenet": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "XorDDoS": {
+              "total": 2,
+              "training": 1,
+              "unknown_test": 1,
+              "detection_rate": 1.0
+            },
+            "unassigned": {
+              "total": 8,
+              "training": 1,
+              "unknown_test": 7,
+              "detection_rate": 1.0
+            }
+          }
+        }
+      ],
+      "mean_std": {
+        "test": {
+          "accuracy": {
+            "mean": 0.946969696969697,
+            "std": 0.0,
+            "values": [
+              0.946969696969697
+            ]
+          },
+          "balanced_accuracy": {
+            "mean": 0.9228276877761414,
+            "std": 0.0,
+            "values": [
+              0.9228276877761414
+            ]
+          },
+          "precision": {
+            "mean": 0.9545454545454546,
+            "std": 0.0,
+            "values": [
+              0.9545454545454546
+            ]
+          },
+          "recall": {
+            "mean": 0.9742268041237113,
+            "std": 0.0,
+            "values": [
+              0.9742268041237113
+            ]
+          },
+          "f1": {
+            "mean": 0.9642857142857143,
+            "std": 0.0,
+            "values": [
+              0.9642857142857143
+            ]
+          },
+          "roc_auc": {
+            "mean": 0.9879970544918999,
+            "std": 0.0,
+            "values": [
+              0.9879970544918999
+            ]
+          }
+        },
+        "malware": {
+          "detection_rate": {
+            "mean": 0.9742268041237113,
+            "std": 0.0,
+            "values": [
+              0.9742268041237113
+            ]
+          }
+        },
+        "benign": {
+          "false_positive_rate": {
+            "mean": 0.12857142857142856,
+            "std": 0.0,
+            "values": [
+              0.12857142857142856
+            ]
+          }
+        },
+        "threshold": {
+          "threshold": {
+            "mean": 0.2703332478320443,
+            "std": 0.0,
+            "values": [
+              0.2703332478320443
+            ]
+          },
+          "oof_balanced_accuracy": {
+            "mean": 0.9666666666666667,
+            "std": 0.0,
+            "values": [
+              0.9666666666666667
+            ]
+          }
+        }
+      }
+    }
+  }
+}

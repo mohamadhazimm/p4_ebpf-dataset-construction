@@ -39,7 +39,11 @@ data/malware/cohorts/*
 !data/malware/malware_sample_inventory_all_expansions_20261014.csv
 !data/malware/malware_sample_source_catalog.csv
 !data/malware/full-cohort-323/
+data/malware/full-cohort-323/*
 !data/malware/full-cohort-323/cohort_manifest.csv
+!data/malware/full-cohort-323/family_type_counts_323.csv
+!data/malware/full-cohort-323/october-17-runs/
+!data/malware/full-cohort-323/common-schema-cv-20261017/
 !data/malware/revision4/
 data/malware/revision4/*
 !data/malware/revision4/incoming/
@@ -66,6 +70,7 @@ data/**/*.elf
 data/**/*.bin
 data/**/runs/
 data/**/combined_collector*.csv
+data/**/malware_collector_*.csv
 data/packages/*.tar*
 
 # Generated model artifacts
@@ -75,3 +80,57 @@ models/
 
 # Legacy root-level sample predictions are local analysis outputs
 /reports/out_of_fold_predictions.csv
+
+# Versioned-collector experiments (2026-10-17 onward, see
+# data/versioned-collector/README.md). Publish our own source code and
+# Markdown reports only. Captures, telemetry, payloads, malware, VM run
+# outputs, third-party source/build trees, and the generated setup scripts
+# (they embed the whole guest payload, malware archives included, in base64)
+# stay local.
+!data/versioned-collector/
+data/versioned-collector/**
+!data/versioned-collector/**/
+!data/versioned-collector/**/*.py
+!data/versioned-collector/**/*.sh
+!data/versioned-collector/**/*.c
+!data/versioned-collector/**/*.h
+!data/versioned-collector/**/*.md
+data/versioned-collector/**/setup_guest.sh
+data/versioned-collector/**/setup_pilot.sh
+data/versioned-collector/**/setup_static_pilot.sh
+data/versioned-collector/**/runs/
+data/versioned-collector/**/output/
+data/versioned-collector/**/collection/
+data/versioned-collector/**/phases/
+data/versioned-collector/**/payload/
+data/versioned-collector/**/fixtures/
+data/versioned-collector/**/workspace/
+data/versioned-collector/**/samples/
+data/versioned-collector/**/arguments/
+data/versioned-collector/**/shadow/
+data/versioned-collector/**/staging/
+data/versioned-collector/**/builds/
+data/versioned-collector/**/build/
+data/versioned-collector/**/build-*/
+data/versioned-collector/**/*-builds/
+data/versioned-collector/**/build-tools/
+data/versioned-collector/**/compatible-static/
+data/versioned-collector/**/i386-toolchain-probe/
+data/versioned-collector/**/netcat-musl-dependencies/
+data/versioned-collector/**/remediation-preparation/
+data/versioned-collector/**/remediation-tools/
+data/versioned-collector/**/apt-lists/
+data/versioned-collector/**/source*/
+data/versioned-collector/**/*-incoming/
+data/versioned-collector/**/__pycache__/
+data/versioned-collector/**/sysroot/
+data/versioned-collector/**/extracted/
+data/versioned-collector/**/usr/
+data/versioned-collector/**/include/
+data/versioned-collector/**/lib/
+data/versioned-collector/**/lib64/
+# Benign workload inputs/outputs of the additional benign checks (tool fixtures).
+data/versioned-collector/additional-study-review-20261022/additional-benign-workloads/*/*/
+# Offline analysis runs of the external datasets (no VM data): reports only.
+!data/versioned-collector/additional-study-review-20261022/iot23-external/runs/
+!data/versioned-collector/additional-study-review-20261022/lidds-external/runs/

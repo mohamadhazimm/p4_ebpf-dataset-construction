@@ -1,0 +1,267 @@
+{
+  "dataset": "/home/ali/Desktop/Hazim/vbox-runs/hybrid-rf-study-20261010/data/malware/revision4/family-heldout-balanced-224-v1-20261014/labeled_sample_dataset_full_35host_9network.csv",
+  "feature_columns": "/home/ali/Desktop/Hazim/vbox-runs/hybrid-rf-study-20261010/data/malware/revision4/family-heldout-stable-151-v1-20261014/feature_breadth_comparison/balanced_9network_9host_feature_columns.json",
+  "samples": 362,
+  "class_counts": {
+    "benign": 138,
+    "malware": 224
+  },
+  "validation": "StratifiedGroupKFold",
+  "folds": 5,
+  "seed": 42,
+  "model": "RandomForestClassifier; 500 trees; max_features=sqrt; min_samples_leaf=2; balanced_subsample; n_jobs=-1",
+  "runtime_scope": "Classifier fit and inference only; excludes P4/eBPF collection, feature extraction, and network I/O.",
+  "environment": {
+    "python": "3.10.12",
+    "scikit_learn": "1.7.0",
+    "logical_cpus": 24
+  },
+  "results": {
+    "network": {
+      "feature_count": 45,
+      "pooled_oof_metrics": {
+        "accuracy": 0.8701657458563536,
+        "balanced_accuracy": 0.8742236024844721,
+        "precision": 0.927536231884058,
+        "recall": 0.8571428571428571,
+        "f1": 0.8909512761020881,
+        "roc_auc": 0.9290566770186336,
+        "tn": 123,
+        "fp": 15,
+        "fn": 32,
+        "tp": 192
+      },
+      "fold_metric_summary": {
+        "accuracy": {
+          "mean": 0.8745807088403438,
+          "std": 0.05551094987039016
+        },
+        "balanced_accuracy": {
+          "mean": 0.8702558758750709,
+          "std": 0.06846290900196689
+        },
+        "precision": {
+          "mean": 0.8758730158730159,
+          "std": 0.09447045126790388
+        },
+        "recall": {
+          "mean": 0.8517604617604617,
+          "std": 0.1269432244238988
+        },
+        "f1": {
+          "mean": 0.8615705931495405,
+          "std": 0.10067683003033748
+        },
+        "roc_auc": {
+          "mean": 0.9428714824906775,
+          "std": 0.03173869409613782
+        }
+      },
+      "matches_reference_metrics": true,
+      "reference_metric_deltas": {
+        "accuracy": 0.0,
+        "balanced_accuracy": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "roc_auc": 0.0
+      },
+      "runtime": {
+        "fit_seconds_by_fold": [
+          0.6661120670032687,
+          0.6576818889880087,
+          0.6764761980157346,
+          0.6467917939880863,
+          0.6527071540185716
+        ],
+        "fit_seconds_total": 3.29976910201367,
+        "fit_seconds_median_per_fold": 0.6576818889880087,
+        "first_batch_latency_ms_median": 49.315487005515024,
+        "inference_modes": {
+          "all_cores": {
+            "warm_batch_latency_ms_p50": 50.30546350462828,
+            "warm_batch_latency_ms_p95": 63.67617400246672,
+            "warm_batch_throughput_samples_per_second": 1378.057252662397,
+            "single_sample_latency_ms_p50": 50.425901004928164,
+            "single_sample_latency_ms_p95": 63.38973398669623,
+            "batch_repeats_per_fold": 12,
+            "single_sample_repeats_per_fold": 20
+          },
+          "single_worker": {
+            "warm_batch_latency_ms_p50": 11.304020008537918,
+            "warm_batch_latency_ms_p95": 13.708932005101815,
+            "warm_batch_throughput_samples_per_second": 6315.027732353987,
+            "single_sample_latency_ms_p50": 9.397307512699626,
+            "single_sample_latency_ms_p95": 10.72268999996595,
+            "batch_repeats_per_fold": 12,
+            "single_sample_repeats_per_fold": 20
+          }
+        }
+      }
+    },
+    "host": {
+      "feature_count": 45,
+      "pooled_oof_metrics": {
+        "accuracy": 0.914364640883978,
+        "balanced_accuracy": 0.9182841614906833,
+        "precision": 0.957345971563981,
+        "recall": 0.9017857142857143,
+        "f1": 0.9287356321839081,
+        "roc_auc": 0.9762228260869565,
+        "tn": 129,
+        "fp": 9,
+        "fn": 22,
+        "tp": 202
+      },
+      "fold_metric_summary": {
+        "accuracy": {
+          "mean": 0.9301610092482303,
+          "std": 0.053837283336337347
+        },
+        "balanced_accuracy": {
+          "mean": 0.9227013835837365,
+          "std": 0.06229767591235454
+        },
+        "precision": {
+          "mean": 0.9516599821746881,
+          "std": 0.054461867344537465
+        },
+        "recall": {
+          "mean": 0.8975036075036075,
+          "std": 0.09367254731705799
+        },
+        "f1": {
+          "mean": 0.923144709027062,
+          "std": 0.07438588211574765
+        },
+        "roc_auc": {
+          "mean": 0.978624404147624,
+          "std": 0.01881251076890984
+        }
+      },
+      "matches_reference_metrics": true,
+      "reference_metric_deltas": {
+        "accuracy": 0.0,
+        "balanced_accuracy": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "roc_auc": 0.0
+      },
+      "runtime": {
+        "fit_seconds_by_fold": [
+          0.667025067989016,
+          0.6904788890096825,
+          0.6665879499923903,
+          0.6541627269762103,
+          0.6581762109999545
+        ],
+        "fit_seconds_total": 3.3364308449672535,
+        "fit_seconds_median_per_fold": 0.6665879499923903,
+        "first_batch_latency_ms_median": 49.62764200172387,
+        "inference_modes": {
+          "all_cores": {
+            "warm_batch_latency_ms_p50": 49.606672997470014,
+            "warm_batch_latency_ms_p95": 76.46542598376982,
+            "warm_batch_throughput_samples_per_second": 1368.550324956072,
+            "single_sample_latency_ms_p50": 50.84794599679299,
+            "single_sample_latency_ms_p95": 64.1206550062634,
+            "batch_repeats_per_fold": 12,
+            "single_sample_repeats_per_fold": 20
+          },
+          "single_worker": {
+            "warm_batch_latency_ms_p50": 10.944014502456412,
+            "warm_batch_latency_ms_p95": 12.197892996482551,
+            "warm_batch_throughput_samples_per_second": 6604.8758725441785,
+            "single_sample_latency_ms_p50": 9.620441502192989,
+            "single_sample_latency_ms_p95": 12.637669977266341,
+            "batch_repeats_per_fold": 12,
+            "single_sample_repeats_per_fold": 20
+          }
+        }
+      }
+    },
+    "hybrid": {
+      "feature_count": 90,
+      "pooled_oof_metrics": {
+        "accuracy": 0.9281767955801105,
+        "balanced_accuracy": 0.9294448757763976,
+        "precision": 0.9583333333333334,
+        "recall": 0.9241071428571429,
+        "f1": 0.9409090909090909,
+        "roc_auc": 0.9850866977225672,
+        "tn": 129,
+        "fp": 9,
+        "fn": 17,
+        "tp": 207
+      },
+      "fold_metric_summary": {
+        "accuracy": {
+          "mean": 0.921434333625003,
+          "std": 0.04700392944741267
+        },
+        "balanced_accuracy": {
+          "mean": 0.9145361174772939,
+          "std": 0.05889143115644
+        },
+        "precision": {
+          "mean": 0.9266421568627451,
+          "std": 0.062251982909795424
+        },
+        "recall": {
+          "mean": 0.896075036075036,
+          "std": 0.11791261821968069
+        },
+        "f1": {
+          "mean": 0.9082199925678187,
+          "std": 0.08003284847718718
+        },
+        "roc_auc": {
+          "mean": 0.9825159243920853,
+          "std": 0.014906818490693152
+        }
+      },
+      "matches_reference_metrics": true,
+      "reference_metric_deltas": {
+        "accuracy": 0.0,
+        "balanced_accuracy": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "roc_auc": 0.0
+      },
+      "runtime": {
+        "fit_seconds_by_fold": [
+          0.7171724649961106,
+          0.6564598830009345,
+          0.6591826800140552,
+          0.6373687660088763,
+          0.6484091620077379
+        ],
+        "fit_seconds_total": 3.3185929560277145,
+        "fit_seconds_median_per_fold": 0.6564598830009345,
+        "first_batch_latency_ms_median": 49.704381002811715,
+        "inference_modes": {
+          "all_cores": {
+            "warm_batch_latency_ms_p50": 49.680178504786454,
+            "warm_batch_latency_ms_p95": 60.468750016298145,
+            "warm_batch_throughput_samples_per_second": 1413.5081222978401,
+            "single_sample_latency_ms_p50": 50.66183500457555,
+            "single_sample_latency_ms_p95": 65.37309801205993,
+            "batch_repeats_per_fold": 12,
+            "single_sample_repeats_per_fold": 20
+          },
+          "single_worker": {
+            "warm_batch_latency_ms_p50": 10.619747496093623,
+            "warm_batch_latency_ms_p95": 14.121059997705743,
+            "warm_batch_throughput_samples_per_second": 6630.315777062821,
+            "single_sample_latency_ms_p50": 9.351255997898988,
+            "single_sample_latency_ms_p95": 10.399813007097691,
+            "batch_repeats_per_fold": 12,
+            "single_sample_repeats_per_fold": 20
+          }
+        }
+      }
+    }
+  }
+}
