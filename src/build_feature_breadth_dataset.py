@@ -10,7 +10,7 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
-from build_dataset import STATISTICS, aggregate, numeric
+from build_dataset import HOSTMON_MODEL_FIELDS, STATISTICS, aggregate, numeric
 
 
 def read_examples(path: Path) -> list[dict[str, str]]:
@@ -46,6 +46,7 @@ def main() -> int:
                 for field in fields
                 if field.startswith("net_")
                 or (field.startswith("ebpf_") and field != "ebpf_status")
+                or field in HOSTMON_MODEL_FIELDS
             }
             if raw_fields is None:
                 raw_fields = fields
@@ -73,7 +74,11 @@ def main() -> int:
         raise ValueError(f"Dataset/collector samples differ; missing={missing[:3]}, extra={extra[:3]}")
 
     network_fields = sorted(field for field in raw_fields if field.startswith("net_"))
-    host_fields = sorted(field for field in raw_fields if field.startswith("ebpf_"))
+    host_fields = sorted(
+        field
+        for field in raw_fields
+        if field.startswith("ebpf_") or field in HOSTMON_MODEL_FIELDS
+    )
     feature_sets = {
         "network": [f"network__{field}__{stat}" for field in network_fields for stat in STATISTICS],
         "host": [f"host__{field}__{stat}" for field in host_fields for stat in STATISTICS],

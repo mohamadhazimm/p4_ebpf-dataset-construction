@@ -15,7 +15,7 @@ NETWORK_FIELDS = {
     "net_bytes_captured",
     "net_flow_count",
 }
-EBPF_MODEL_FIELDS = {
+LEGACY_EBPF_MODEL_FIELDS = {
     "ebpf_connect_count",
     "ebpf_sendto_count",
     "ebpf_socket_count",
@@ -25,6 +25,34 @@ EBPF_MODEL_FIELDS = {
     "ebpf_file_pwrite64_success_count",
     "ebpf_file_writev_success_count",
     "ebpf_file_write_bytes",
+}
+HOSTMON_MODEL_FIELDS = {
+    "host_active_processes",
+    "host_exec_total",
+    "host_open_total",
+    "host_rename_total",
+    "host_unlink_total",
+    "host_connect_total",
+    "host_unique_ip_total",
+    "host_unique_port_total",
+    "host_total_syscalls_total",
+    "host_unique_syscalls_mean",
+    "host_unique_syscalls_max",
+    "host_entropy_mean",
+    "host_entropy_max",
+    "host_top_syscall_freq_mean",
+    "host_top_syscall_freq_max",
+    "host_avg_run_length_mean",
+    "host_avg_run_length_max",
+    "host_max_run_length_mean",
+    "host_max_run_length_max",
+    "host_transition_count_total",
+    "host_rare_syscall_ratio_mean",
+    "host_rare_syscall_ratio_max",
+    "host_first50_unique_mean",
+    "host_first50_unique_max",
+    "host_first100_unique_mean",
+    "host_first100_unique_max",
 }
 STATISTICS = ("mean", "max", "sum", "std", "active_windows")
 
@@ -101,6 +129,7 @@ def load_telemetry(path: Path, label_value: int | None, class_name: str | None, 
         fieldnames = set(reader.fieldnames or [])
         rows_by_sample = defaultdict(list)
         metadata_by_sample = {}
+        quality_by_sample = defaultdict(set)
         for row in reader:
             if row.get("record_type") != "telemetry_window":
                 continue
@@ -109,13 +138,29 @@ def load_telemetry(path: Path, label_value: int | None, class_name: str | None, 
                 continue
             rows_by_sample[artifact].append(row)
             metadata_by_sample[artifact] = row
+            quality_by_sample[artifact].add(row.get("collection_quality_status", "").strip())
+
+    inconsistent_quality = sorted(
+        artifact for artifact, statuses in quality_by_sample.items() if len(statuses) > 1
+    )
+    if inconsistent_quality:
+        raise ValueError(
+            f"Collection quality status varies across telemetry windows for {inconsistent_quality[0]}"
+        )
+    rejected_quality = sorted(
+        artifact for artifact, statuses in quality_by_sample.items() if "rejected" in statuses
+    )
+    if rejected_quality:
+        raise ValueError(
+            f"collection quality rejected {len(rejected_quality)} sample(s); first: {rejected_quality[0]}"
+        )
 
     network_fields = sorted(field for field in NETWORK_FIELDS if field in fieldnames)
-    host_fields = sorted(
-        field
-        for field in fieldnames
-        if field in EBPF_MODEL_FIELDS
-    )
+    host_fields = sorted(field for field in fieldnames if field in HOSTMON_MODEL_FIELDS)
+    if not host_fields:
+        host_fields = sorted(
+            field for field in fieldnames if field in LEGACY_EBPF_MODEL_FIELDS
+        )
     feature_groups = {"network": network_fields, "host": host_fields}
     examples = []
 
@@ -125,13 +170,14 @@ def load_telemetry(path: Path, label_value: int | None, class_name: str | None, 
         sample_class_name = class_name
         package = "malware"
         workload_family = "malware"
+        package_group = "malware"
         if manifest is not None:
             entry = manifest.get(artifact)
             if entry is None:
                 raise ValueError(f"No workload manifest entry for benign artifact {artifact}")
-            package = entry.get("package", "scenario")
+            package_group = entry.get("package_group") or entry.get("package", "scenario")
             workload_family = entry.get("workload_family", "unknown")
-            group_id = entry.get("group_id", f"{package}::{workload_family}")
+            group_id = entry.get("group_id", f"{package_group}::{workload_family}")
             if sample_label is None:
                 try:
                     sample_label = int(entry["label"])
@@ -148,10 +194,11 @@ def load_telemetry(path: Path, label_value: int | None, class_name: str | None, 
             "sample_name": row.get("sample_name") or row.get("label") or artifact,
             "label": sample_label,
             "class_name": sample_class_name,
-            "package_group": package,
+            "package_group": package_group,
             "workload_family": workload_family,
             "group_id": group_id,
             "sample_status": row.get("sample_status", ""),
+            "collection_quality_status": next(iter(quality_by_sample[artifact])) or "legacy_unverified",
             "window_count": len(sample_rows),
         }
         if manifest is not None and label_value is None:

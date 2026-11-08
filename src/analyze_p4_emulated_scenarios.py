@@ -589,6 +589,7 @@ def main() -> int:
     parser.add_argument("--legacy-runs", type=Path, default=default_legacy_runs)
     parser.add_argument("--new-manifest", type=Path, default=default_v7_manifest)
     parser.add_argument("--new-runs", type=Path, default=default_v7_runs)
+    parser.add_argument("--new-cohort-name", default="p4-additions-v7")
     parser.add_argument("--p4-repo", type=Path, default=P4_REPO)
     parser.add_argument("--output-dir", type=Path, default=default_output)
     parser.add_argument("--folds", type=int, default=5)
@@ -618,7 +619,7 @@ def main() -> int:
     host_fields = None
     cohort_args = (
         ("legacy-v1", args.legacy_manifest, args.legacy_runs),
-        ("p4-additions-v7", args.new_manifest, args.new_runs),
+        (args.new_cohort_name, args.new_manifest, args.new_runs),
     )
     alignment_counts = Counter()
     for cohort_name, manifest_path, runs_dir in cohort_args:

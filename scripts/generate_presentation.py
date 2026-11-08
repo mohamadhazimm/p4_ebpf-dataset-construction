@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+from collections import Counter
 from pathlib import Path
 
 from pptx import Presentation
@@ -18,10 +19,11 @@ from pptx.util import Inches, Pt
 ROOT = Path(__file__).resolve().parents[1]
 COHORT = ROOT / "data/malware/revision4/family-heldout-balanced-224-v1-20261014"
 REPORTS = COHORT / "reports/balanced_9network_9host"
-SCORES_PATH = REPORTS / "category_analysis/overall_and_category_scores.csv"
-METRICS_PATH = REPORTS / "cv_metrics.csv"
+RECOMPUTED_REPORTS = REPORTS / "recomputed_20261015"
+SCORES_PATH = RECOMPUTED_REPORTS / "category_analysis/overall_and_category_scores.csv"
+METRICS_PATH = RECOMPUTED_REPORTS / "cv_metrics.csv"
 FEATURES_PATH = ROOT / "data/malware/revision4/family-heldout-stable-151-v1-20261014/feature_breadth_comparison/balanced_9network_9host_feature_columns.json"
-INVENTORY_PATH = ROOT / "data/malware/malware_sample_inventory_all_expansions_20261014.csv"
+INVENTORY_PATH = ROOT / "data/malware/malware_sample_source_catalog.csv"
 
 WIDTH = 13.333
 HEIGHT = 7.5
@@ -162,10 +164,32 @@ def make_cover(prs, notes):
     add_text(slide, 0.82, 1.58, 8.25, 1.52, "Hybrid Malware\nDetection", 34, PAPER, True)
     add_text(slide, 0.85, 3.45, 7.75, 0.88, "Comparing network telemetry, host eBPF, and their combination", 19, "E0E8E3")
     add_rule(slide, 0.85, 5.65, 8.1, 5.65, "5D766D", 1)
-    add_text(slide, 0.85, 5.95, 7.8, 0.62, "224 malware samples  ·  138 benign controls  ·  grouped out-of-fold evaluation", 12, "BFD1C7")
+    add_text(slide, 0.85, 5.95, 7.8, 0.62, "224 modeled malware  ·  138 benign controls  ·  grouped out-of-fold evaluation", 12, "BFD1C7")
     add_text(slide, 0.85, 6.85, 7.9, 0.28, "P4 + eBPF research project  |  Dataset study", 9, "AABCB4")
     add_notes(slide, notes)
     return slide
+
+
+def add_family_register(slide, family_counts):
+    families = sorted(
+        (
+            (family, count)
+            for family, count in family_counts.items()
+            if family.casefold() != "unassigned"
+        ),
+        key=lambda item: (-item[1], item[0].casefold()),
+    )
+    midpoint = (len(families) + 1) // 2
+    for column_index, entries in enumerate((families[:midpoint], families[midpoint:])):
+        x = 0.88 + column_index * 5.90
+        add_shape(slide, x, 2.88, 5.70, 3.56, PAPER, rounded=True)
+        add_text(slide, x + 0.20, 3.02, 4.44, 0.22, "FAMILY", 8.5, MUTED, True, margin=0)
+        add_text(slide, x + 4.77, 3.02, 0.65, 0.22, "N", 8.5, MUTED, True, align=PP_ALIGN.RIGHT, margin=0)
+        add_rule(slide, x + 0.20, 3.29, x + 5.48, 3.29, GRID, 0.7)
+        for index, (family, count) in enumerate(entries):
+            y = 3.39 + index * 0.205
+            add_text(slide, x + 0.20, y, 4.44, 0.19, family, 9.8, INK, margin=0)
+            add_text(slide, x + 4.77, y, 0.65, 0.19, str(count), 9.8, MUTED, True, align=PP_ALIGN.RIGHT, margin=0)
 
 
 def add_category_chart(slide, category_scores):
@@ -225,11 +249,20 @@ def create_deck(output: Path) -> Path:
     hybrid_feature_count = len(feature_sets["hybrid"])
     inventory = read_csv(INVENTORY_PATH)
     acquired = len(inventory)
-    modeled_malware = sum(
-        row.get("included_in_expanded_family_grouped_model", "").casefold() == "yes"
-        for row in inventory
+    modeled_rows = [
+        row for row in inventory
+        if row.get("included_in_expanded_family_grouped_model", "").casefold() == "yes"
+    ]
+    modeled_malware = len(modeled_rows)
+    family_counts = Counter(
+        (row.get("malware_family", "") or "Unassigned").strip() or "Unassigned"
+        for row in modeled_rows
     )
-    no_telemetry = acquired - modeled_malware
+    named_family_count = sum(family.casefold() != "unassigned" for family in family_counts)
+    unassigned_family_samples = sum(
+        count for family, count in family_counts.items() if family.casefold() == "unassigned"
+    )
+    supplemental_malshare_count = sum(row.get("download_source") == "MalShare" for row in inventory)
 
     prs = Presentation()
     prs.slide_width = Inches(WIDTH)
@@ -248,37 +281,28 @@ def create_deck(output: Path) -> Path:
     notes_for_markdown.append(("1. Hybrid Malware Detection", notes))
 
     notes = (
-        "The experiment compares three binary classifiers on identical samples and grouped folds. Network-only uses packet and flow counters, host-only uses eBPF-derived system-call counters, and hybrid combines them. "
-        "The question is whether the two sensor views add complementary evidence under comparable feature budgets, not whether the model identifies a malware family."
+        f"The primary model cohort contains {modeled_malware} malware samples across {named_family_count} named family labels; "
+        f"{unassigned_family_samples} samples have no assigned family label. The register counts family labels in the modeled cohort, not attack behavior verified independently. "
+        f"The supplemental intake adds {supplemental_malshare_count} MalShare Mirai samples outside model scoring: one compatible I386 sample completed an isolated run, while ten other architectures were not run on the x86-64 guest."
     )
-    slide = add_base_slide(prs, "01 / Question", "Do two sensor views add useful evidence?", 2, "Source: docs/STUDY_WALKTHROUGH.md")
-    add_card(slide, 0.82, 1.86, 3.72, 2.20, "NETWORK", "What crossed the interface?\n\nPacket counts, bytes, rates, and flow summaries.", TEAL, PALE_TEAL)
-    add_card(slide, 4.80, 1.86, 3.72, 2.20, "HOST / eBPF", "What did the process do?\n\nSelected socket, open, and write syscall counters.", GREEN, PALE_GREEN)
-    add_card(slide, 8.78, 1.86, 3.72, 2.20, "HYBRID", "Does the joint view help?\n\nBoth sensor sets, evaluated on the same samples.", CORAL, PALE_CORAL)
-    add_text(slide, 0.92, 4.68, 11.5, 0.60, "Primary outcome: malware-versus-benign discrimination, not family classification.", 18, INK, True, align=PP_ALIGN.CENTER)
-    add_text(
-        slide,
-        1.1,
-        5.48,
-        11.1,
-        0.48,
-        f"Same cohort  ·  Same grouped folds  ·  {network_feature_count} / {host_feature_count} / {hybrid_feature_count} model features",
-        12,
-        MUTED,
-        align=PP_ALIGN.CENTER,
-    )
+    slide = add_base_slide(prs, "01 / Families", "Malware families represented in the modeled cohort", 2, "Source: malware_sample_source_catalog.csv; family/signature metadata")
+    add_metric_tile(slide, 0.94, 1.63, 3.55, str(modeled_malware), "MODELED MALWARE", GREEN)
+    add_metric_tile(slide, 4.89, 1.63, 3.55, str(named_family_count), "NAMED FAMILIES", TEAL)
+    add_metric_tile(slide, 8.84, 1.63, 3.55, str(unassigned_family_samples), "UNASSIGNED FAMILY LABEL", GOLD)
+    add_family_register(slide, family_counts)
+    add_text(slide, 0.94, 6.55, 11.45, 0.25, f"Supplemental: {supplemental_malshare_count} MalShare Mirai samples; excluded from the model results.", 9.4, MUTED, True, align=PP_ALIGN.CENTER)
     add_notes(slide, notes)
-    notes_for_markdown.append(("2. Research question", notes))
+    notes_for_markdown.append(("2. Malware families", notes))
 
     notes = (
-        f"The inventory contains {acquired} acquisitions. {modeled_malware} malware samples had archived telemetry and were included; {no_telemetry} did not and were excluded. "
-        "The final binary dataset adds 138 benign workloads, yielding 362 evaluated samples. The newest batch had 42 acquisitions, 38 telemetry captures, and four without usable telemetry. "
-        "The 195 telemetry windows and 21,189 eBPF events refer to the newest batch's successful captures, not the whole cohort."
+        f"The source-aware catalog contains {acquired} malware records: 231 from MalwareBazaar and {supplemental_malshare_count} supplemental MalShare samples. "
+        f"The primary evaluation remains {modeled_malware} modeled MalwareBazaar malware plus 138 benign workloads, for 362 samples. "
+        "Seven earlier acquisitions lacked usable telemetry; the 11 MalShare additions remain supplemental, including the single I386 run, and do not change the reported model scores."
     )
-    slide = add_base_slide(prs, "02 / Cohort", "From acquisitions to the evaluated cohort", 3, "Source: malware_sample_inventory_all_expansions_20261014.csv; current feature dataset")
-    add_metric_tile(slide, 0.88, 1.84, 2.62, str(acquired), "MALWARE ACQUISITIONS", GOLD)
+    slide = add_base_slide(prs, "02 / Cohort", "Keep supplemental acquisitions separate from evaluation", 3, "Source: malware_sample_source_catalog.csv; current feature dataset")
+    add_metric_tile(slide, 0.88, 1.84, 2.62, str(acquired), "MALWARE CATALOG RECORDS", GOLD)
     add_metric_tile(slide, 3.65, 1.84, 2.62, str(modeled_malware), "MALWARE MODELED", GREEN)
-    add_metric_tile(slide, 6.42, 1.84, 2.62, str(no_telemetry), "NO USABLE TELEMETRY", CORAL)
+    add_metric_tile(slide, 6.42, 1.84, 2.62, str(supplemental_malshare_count), "SUPPLEMENTAL MALSHARE", CORAL)
     add_metric_tile(slide, 9.19, 1.84, 3.10, "138", "BENIGN CONTROLS", TEAL)
     add_shape(slide, 1.02, 3.35, 5.16, 1.46, PALE_GREEN, rounded=True)
     add_text(slide, 1.33, 3.63, 4.56, 0.39, "224 malware samples", 23, GREEN, True, align=PP_ALIGN.CENTER)
@@ -287,34 +311,40 @@ def create_deck(output: Path) -> Path:
     add_shape(slide, 7.03, 3.35, 5.16, 1.46, PALE_TEAL, rounded=True)
     add_text(slide, 7.34, 3.63, 4.56, 0.39, "138 benign workloads", 23, TEAL, True, align=PP_ALIGN.CENTER)
     add_text(slide, 7.34, 4.12, 4.56, 0.31, "28 package-family groups", 10.5, MUTED, align=PP_ALIGN.CENTER)
-    add_text(slide, 1.0, 5.36, 11.2, 0.45, "362 total evaluated samples  |  Newest 42-sample batch: 38 captures, 4 collection failures", 12.5, INK, True, align=PP_ALIGN.CENTER)
+    add_text(slide, 1.0, 5.36, 11.2, 0.45, "362 evaluated samples  |  7 earlier records lacked telemetry  |  11 MalShare samples remain supplemental", 11.4, INK, True, align=PP_ALIGN.CENTER)
     add_notes(slide, notes)
     notes_for_markdown.append(("3. Cohort and exclusions", notes))
 
     notes = (
-        "Candidate archives were selected from MalwareBazaar metadata, verified by SHA-256, staged in a guest restored from a clean snapshot, and run one at a time. "
-        "The malware VM and sink VM used only the internal malnet network. Packet capture and eBPF telemetry were collected in parallel. The 20-second cap and 0.5-second windows were consistent across the collection. "
-        "A nonzero exit or timeout did not change the malware label; missing archived telemetry did exclude a sample."
+        "The malware guest is Ubuntu-Clean-24.04 and is restored from a clean snapshot before every sample. Its only enabled adapter is VirtualBox internal network malnet; the sink VM uses the same network, with no NAT, bridged, or host-only interface. "
+        "Each encrypted archive and extracted payload is hash-verified. One sample runs for at most 20 seconds while packet capture and eBPF collect 0.5-second windows. The malware VM is powered off and reverted after each run."
     )
-    slide = add_base_slide(prs, "03 / Collection", "Controlled execution, two synchronized sensors", 4, "Source: scripts/stage_malware_revision4.sh; scripts/vbox_malware_batch.sh; docs/STUDY_WALKTHROUGH.md")
+    slide = add_base_slide(prs, "03 / Lab setup", "Two isolated VMs share an internal-only network", 4, "Source: VirtualBox configuration; scripts/stage_malware_revision4.sh; scripts/vbox_malware_batch.sh")
+    add_card(slide, 0.86, 1.86, 4.15, 1.92, "MALWARE VM", "Ubuntu-Clean-24.04\nClean snapshot restored between samples\nNIC1: internal network malnet; other NICs disabled", GREEN, PALE_GREEN)
+    add_rule(slide, 5.02, 2.78, 5.46, 2.78, TEAL, 2)
+    add_shape(slide, 5.46, 2.27, 2.42, 1.02, PALE_TEAL, rounded=True)
+    add_text(slide, 5.65, 2.45, 2.04, 0.34, "malnet", 18, TEAL, True, align=PP_ALIGN.CENTER)
+    add_text(slide, 5.65, 2.84, 2.04, 0.24, "VirtualBox internal network", 8.6, MUTED, align=PP_ALIGN.CENTER)
+    add_rule(slide, 7.88, 2.78, 8.30, 2.78, TEAL, 2)
+    add_card(slide, 8.30, 1.86, 4.15, 1.92, "SINK VM", "Controlled sink services\nNIC1 attached to the same malnet\nNo public or host-connected adapter", TEAL, PALE_TEAL)
+    add_text(slide, 0.95, 4.05, 11.4, 0.25, "PER-SAMPLE LIFECYCLE", 9, MUTED, True)
     steps = [
-        ("01", "Acquire", "Metadata-selected\nLinux ELF candidates", GOLD),
-        ("02", "Verify", "Encrypted ZIP\nSHA-256 check", TEAL),
-        ("03", "Isolate", "Clean VM snapshot\ninternal malnet only", GREEN),
-        ("04", "Observe", "PCAP + eBPF\n0.5 s windows", CORAL),
-        ("05", "Aggregate", "One feature row\nper sample", GOLD),
+        ("01", "Restore", "Clean snapshot", GREEN),
+        ("02", "Verify", "Encrypted ZIP + SHA-256", GOLD),
+        ("03", "Run", "One sample · max 20 s", CORAL),
+        ("04", "Observe", "PCAP + eBPF · 0.5 s windows", TEAL),
+        ("05", "Revert", "Power off and restore", GREEN),
     ]
     for index, (number, title, body, accent) in enumerate(steps):
-        x = 0.82 + index * 2.48
-        add_shape(slide, x, 2.12, 2.15, 2.12, PAPER, rounded=True)
-        add_text(slide, x + 0.16, 2.31, 0.54, 0.28, number, 10, accent, True)
-        add_text(slide, x + 0.16, 2.77, 1.85, 0.35, title, 16, INK, True)
-        add_text(slide, x + 0.16, 3.30, 1.86, 0.64, body, 11, MUTED)
+        x = 0.86 + index * 2.48
+        add_shape(slide, x, 4.44, 2.15, 1.30, PAPER, rounded=True)
+        add_text(slide, x + 0.15, 4.58, 0.35, 0.22, number, 8.5, accent, True)
+        add_text(slide, x + 0.15, 4.88, 1.86, 0.25, title, 12, INK, True)
+        add_text(slide, x + 0.15, 5.23, 1.86, 0.36, body, 8.6, MUTED)
         if index < len(steps) - 1:
-            add_text(slide, x + 2.17, 2.92, 0.3, 0.3, ">", 16, MUTED, True, align=PP_ALIGN.CENTER)
-    add_shape(slide, 1.0, 4.76, 11.3, 0.86, PALE_CORAL, rounded=True)
-    add_text(slide, 1.25, 4.98, 10.8, 0.40, "Safety boundary: no NAT or public network interface on the malware VM", 14, CORAL, True, align=PP_ALIGN.CENTER)
-    add_text(slide, 1.2, 5.92, 10.9, 0.34, "20-second execution limit  ·  Separate clean restore per sample  ·  Sink VM on internal network", 10.5, MUTED, align=PP_ALIGN.CENTER)
+            add_text(slide, x + 2.17, 4.91, 0.25, 0.25, ">", 13, MUTED, True, align=PP_ALIGN.CENTER)
+    add_shape(slide, 0.98, 6.04, 11.32, 0.52, PALE_CORAL, rounded=True)
+    add_text(slide, 1.18, 6.15, 10.92, 0.24, "No NAT, bridged, or host-only path from the malware guest to the host or public internet.", 10.4, CORAL, True, align=PP_ALIGN.CENTER)
     add_notes(slide, notes)
     notes_for_markdown.append(("4. Isolated collection", notes))
 
@@ -337,16 +367,16 @@ def create_deck(output: Path) -> Path:
 
     notes = (
         "StratifiedGroupKFold uses five folds and seed 42. The 57 groups are 29 malware signature groups plus 28 benign package-family groups; no group crosses folds. "
-        "Within each fold, median imputation is fit only on the training partition, followed by the same 500-tree Random Forest configuration. "
+        "Within each fold, median imputation is fit only on the training partition, followed by the same Random Forest configuration: 500 trees, square-root feature sampling, minimum leaf size two, and balanced subsample weights. "
         "Each sample receives one held-out probability for each feature set. Balanced accuracy is the mean of sensitivity and specificity, which is useful when class sizes differ."
     )
-    slide = add_base_slide(prs, "05 / Evaluation", "Keep related samples together; test on held-out groups", 6, "Source: src/train_compare.py; cv_metrics.json")
+    slide = add_base_slide(prs, "05 / ML model", "Three Random Forest models; test on held-out groups", 6, "Source: src/train_compare.py; recomputed_20261015/cv_metrics.json")
     add_metric_tile(slide, 0.92, 1.86, 2.55, "5-fold", "STRATIFIED GROUP CV", GREEN)
     add_metric_tile(slide, 3.62, 1.86, 2.55, "57", "INDEPENDENT GROUPS", TEAL)
     add_metric_tile(slide, 6.32, 1.86, 2.55, "500", "TREES / MODEL / FOLD", GOLD)
     add_metric_tile(slide, 9.02, 1.86, 3.30, "0", "GROUPS CROSSING FOLDS", CORAL)
     add_card(slide, 0.94, 3.40, 5.42, 2.07, "GROUPING", "Malware: same source signature stays in one fold.\nBenign: same package family stays in one fold.", GREEN, PALE_GREEN)
-    add_card(slide, 6.78, 3.40, 5.42, 2.07, "MODEL PIPELINE", "Fold-local median imputation → Random Forest.\nSame splits and settings for all three feature sets.", TEAL, PALE_TEAL)
+    add_card(slide, 6.78, 3.40, 5.42, 2.07, "MODEL PIPELINE", "Fold-local median imputation → Random Forest.\n500 trees · sqrt feature sampling · min leaf 2\nBalanced subsample weights; same grouped folds.", TEAL, PALE_TEAL)
     add_text(slide, 1.0, 5.90, 11.4, 0.37, "Report pooled out-of-fold metrics from held-out predictions; never score a model on its training rows.", 11.2, INK, True, align=PP_ALIGN.CENTER)
     add_notes(slide, notes)
     notes_for_markdown.append(("6. Evaluation protocol", notes))
@@ -356,7 +386,7 @@ def create_deck(output: Path) -> Path:
         "Hybrid ROC-AUC is 0.985. Balanced accuracy is not the same as accuracy: it gives equal weight to sensitivity and specificity. "
         "The displayed bar axis starts at 0.70 to make small differences readable, so compare the printed values rather than visual bar length alone."
     )
-    slide = add_base_slide(prs, "06 / Results", "Hybrid leads; the gain over host-only is modest", 7, "Source: current cohort cv_metrics.csv; 362 pooled OOF predictions per model")
+    slide = add_base_slide(prs, "06 / Results", "Hybrid leads; the gain over host-only is modest", 7, "Source: recomputed_20261015/cv_metrics.csv; 362 pooled OOF predictions per model")
     add_text(slide, 0.93, 1.70, 4.2, 0.28, "POOLED OUT-OF-FOLD SCORE", 9, MUTED, True)
     chart_x, chart_width = 4.35, 6.25
     min_value, max_value = 0.70, 1.00
@@ -387,7 +417,7 @@ def create_deck(output: Path) -> Path:
         "Hybrid is strongest for botnet and DDoS, and ties host for backdoor and the two-sample Trojan slice. Network scores higher on the small Other ELF slice, while host is strongest for ransomware. "
         "These are descriptive slices and not independently trained category classifiers."
     )
-    slide = add_base_slide(prs, "07 / Category slices", "Category results vary; sample counts matter", 8, "Source: category_analysis/overall_and_category_scores.csv; metadata labels")
+    slide = add_base_slide(prs, "07 / Category slices", "Category results vary; sample counts matter", 8, "Source: recomputed_20261015/category_analysis/overall_and_category_scores.csv; metadata labels")
     add_text(slide, 0.86, 1.62, 11.6, 0.30, "Balanced accuracy: one metadata category vs the same benign controls  ·  values are not multiclass scores", 9.4, MUTED)
     add_category_chart(slide, category_scores)
     add_shape(slide, 0.88, 6.48, 11.6, 0.36, PALE_GOLD, rounded=True)
@@ -400,7 +430,7 @@ def create_deck(output: Path) -> Path:
         "Relative to host-only, the hybrid model reduces false negatives by five without increasing false positives on this pooled OOF set. "
         "This is a cohort-specific threshold result at 0.5, not a guarantee at another deployment threshold."
     )
-    slide = add_base_slide(prs, "08 / Error profile", "Hybrid reduced misses without adding false alarms here", 9, "Source: current cohort cv_metrics.csv; threshold 0.5")
+    slide = add_base_slide(prs, "08 / Error profile", "Hybrid reduced misses without adding false alarms here", 9, "Source: recomputed_20261015/cv_metrics.csv; threshold 0.5")
     columns = [("network", 0.93), ("host", 4.81), ("hybrid", 8.69)]
     max_count = 35
     for name, x in columns:
