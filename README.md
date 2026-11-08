@@ -60,7 +60,7 @@ the host. Git ignores the archive files.
 │   ├── hybrid_scenarios/                  Controlled scenario data and runs
 │   ├── packages/                           Package inputs and manifests
 │   ├── runs/                               General collector output
-│   └── versioned-collector/                Versioned collection output
+│   └── versioned-collector/                Versioned-collector experiments (index: README.md)
 ├── src/                                    Python acquisition and analysis
 ├── scripts/                                Collection and workflow commands
 ├── workloads/                              Benign workload generators
@@ -78,6 +78,12 @@ then use `data/malware/cohorts/` for the compact paper-facing CSVs. The
 collection and run folders hold source records and larger outputs; use the
 CSV archive for older exploratory reports. Malware ZIPs remain encrypted and
 are excluded from Git.
+
+Everything collected and analysed since 2026-10-17 (collector hardening, the
+matched revision-5 cohort, flood and C2 probes, IoT-23 and LID-DS 2021 checks,
+the observation-length study, switch replays) is under `data/versioned-collector/`,
+one folder per experiment. [`data/versioned-collector/README.md`](data/versioned-collector/README.md)
+indexes them. Only their code and Markdown reports are in Git.
 
 ## Workflow
 
