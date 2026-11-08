@@ -1,0 +1,1871 @@
+import capture_liveness_v4 as integrated_liveness
+'Run one sample in an isolated VM and export host/network telemetry.'
+import argparse
+import csv
+import getpass
+import hashlib
+import ipaddress
+import json
+import math
+import os
+import re
+import signal
+import struct
+import subprocess
+import sys
+import threading
+import time
+import uuid
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+import psutil
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+RANSOM_NOTE_KEYWORDS = ('readme', 'recover', 'decrypt', 'restore', 'help', 'how_to', 'your_files', 'ransom', 'locked', 'unlock')
+EBPF_SYSCALLS = ('execve', 'execveat', 'connect', 'sendto', 'recvfrom', 'openat', 'openat2', 'write', 'pwrite64', 'writev', 'close', 'dup2', 'dup3', 'unlinkat', 'renameat', 'renameat2', 'socket', 'bind', 'listen', 'accept', 'accept4', 'mmap', 'mprotect', 'ptrace', 'kill')
+SYSCALL_NAMES_BY_ABI = {'x86_64': {1: 'write', 3: 'close', 9: 'mmap', 10: 'mprotect', 18: 'pwrite64', 20: 'writev', 33: 'dup2', 41: 'socket', 42: 'connect', 43: 'accept', 44: 'sendto', 45: 'recvfrom', 49: 'bind', 50: 'listen', 59: 'execve', 62: 'kill', 101: 'ptrace', 257: 'openat', 263: 'unlinkat', 264: 'renameat', 288: 'accept4', 292: 'dup3', 316: 'renameat2', 322: 'execveat', 437: 'openat2'}, 'i386': {4: 'write', 6: 'close', 11: 'execve', 26: 'ptrace', 37: 'kill', 63: 'dup2', 125: 'mprotect', 146: 'writev', 181: 'pwrite64', 192: 'mmap', 295: 'openat', 301: 'unlinkat', 302: 'renameat', 330: 'dup3', 353: 'renameat2', 358: 'execveat', 359: 'socket', 361: 'bind', 362: 'connect', 363: 'listen', 364: 'accept4', 369: 'sendto', 371: 'recvfrom', 437: 'openat2'}}
+EXEC_SYSCALL_IDS_BY_ABI = {abi: {syscall_id for (syscall_id, name) in syscall_names.items() if name in {'execve', 'execveat'}} for (abi, syscall_names) in SYSCALL_NAMES_BY_ABI.items()}
+
+def syscall_abi_from_elf_header(header):
+    if len(header) < 20 or header[:4] != b'\x7fELF':
+        return None
+    byteorder = {1: 'little', 2: 'big'}.get(header[5])
+    if byteorder is None:
+        return None
+    machine = int.from_bytes(header[18:20], byteorder)
+    if header[4] == 2 and machine == 62:
+        return 'x86_64'
+    if header[4] == 1 and machine == 3:
+        return 'i386'
+    return None
+
+def process_syscall_abi(pid):
+    try:
+        with open(f'/proc/{int(pid)}/exe', 'rb') as executable:
+            return syscall_abi_from_elf_header(executable.read(20))
+    except (OSError, ValueError):
+        return None
+
+def syscall_name_for_id(abi, syscall_id):
+    try:
+        return SYSCALL_NAMES_BY_ABI.get(abi, {}).get(int(syscall_id))
+    except (TypeError, ValueError):
+        return None
+EBPF_FILE_OPEN_EVENT_NAMES = ('openat_success', 'openat2_success')
+EBPF_WRITE_EVENT_NAMES = ('file_write_success', 'file_pwrite64_success', 'file_writev_success')
+EBPF_EVENT_NAMES = (*EBPF_SYSCALLS, *EBPF_FILE_OPEN_EVENT_NAMES, *EBPF_WRITE_EVENT_NAMES, 'fork', 'exit')
+EBPF_COUNTER_FIELDS = tuple((f'ebpf_{name}_count' for name in EBPF_EVENT_NAMES))
+EBPF_VALUE_FIELDS = ('ebpf_file_write_bytes',)
+HOSTMON_SYSCALL_LIMIT = 1024
+HOSTMON_UNIQUE_LIMIT = 64
+HOSTMON_FEATURE_FIELDS = ('host_active_processes', 'host_exec_total', 'host_open_total', 'host_rename_total', 'host_unlink_total', 'host_connect_total', 'host_unique_ip_total', 'host_unique_port_total', 'host_total_syscalls_total', 'host_unique_syscalls_mean', 'host_unique_syscalls_max', 'host_entropy_mean', 'host_entropy_max', 'host_top_syscall_freq_mean', 'host_top_syscall_freq_max', 'host_avg_run_length_mean', 'host_avg_run_length_max', 'host_max_run_length_mean', 'host_max_run_length_max', 'host_transition_count_total', 'host_rare_syscall_ratio_mean', 'host_rare_syscall_ratio_max', 'host_first50_unique_mean', 'host_first50_unique_max', 'host_first100_unique_mean', 'host_first100_unique_max')
+HOSTMON_ZERO = dict.fromkeys(HOSTMON_FEATURE_FIELDS, 0)
+P4_NETWORK_FEATURE_FIELDS = ('net_flow_count_seen', 'net_pkts_total_delta', 'net_bytes_total_delta', 'net_pkts_ab_delta', 'net_bytes_ab_delta', 'net_pkts_ba_delta', 'net_bytes_ba_delta', 'net_min_len_mean', 'net_max_len_mean', 'net_min_len_min', 'net_max_len_max', 'net_avg_pkt_size_delta', 'net_avg_pkt_size_ab_delta', 'net_avg_pkt_size_ba_delta', 'net_flow_duration_mean', 'net_flow_duration_max', 'net_bytes_per_sec_delta', 'net_pkts_per_sec_delta', 'net_down_up_ratio_delta', 'net_ab_ratio_pkt_delta', 'net_ba_ratio_pkt_delta', 'net_ab_ratio_byte_delta', 'net_ba_ratio_byte_delta', 'net_syn_delta', 'net_ack_delta', 'net_rst_delta', 'net_flows_with_ab', 'net_flows_with_ba', 'net_dir_valid_count')
+P4_NETWORK_ZERO = dict.fromkeys(P4_NETWORK_FEATURE_FIELDS, 0)
+NETWORK_EXTRA_FEATURE_FIELDS = ('net_tcp_packets', 'net_udp_packets', 'net_icmp_packets', 'net_other_ip_packets', 'net_ipv6_packets', 'net_tcp_fin_packets', 'net_tcp_psh_packets', 'net_tcp_urg_packets', 'net_unique_source_ips', 'net_unique_destination_ips', 'net_unique_source_ports', 'net_unique_destination_ports', 'net_unique_ip_protocols', 'net_packet_size_std', 'net_packet_size_max', 'net_interarrival_mean_sec', 'net_interarrival_std_sec', 'net_interarrival_min_sec', 'net_interarrival_max_sec', 'net_small_packet_count', 'net_large_packet_count', 'net_dns_port_packet_count', 'net_http_port_packet_count', 'net_tls_port_packet_count', 'net_unique_5tuple_count', 'net_flow_packets_mean', 'net_flow_packets_max', 'net_flow_bytes_max')
+NETWORK_EXTRA_ZERO = dict.fromkeys(NETWORK_EXTRA_FEATURE_FIELDS, 0)
+HOSTMON_ACTION_EVENT_MAP = {'execve': 'exec', 'openat': 'open', 'renameat': 'rename', 'renameat2': 'rename', 'unlinkat': 'unlink', 'connect': 'connect'}
+HOST_EVENT_FEATURE_FIELDS = ('host_unique_process_names', 'host_unique_pids', 'host_unique_tids', 'host_exec_event_count', 'host_execveat_event_count', 'host_fork_event_count', 'host_exit_event_count', 'host_unique_exec_paths', 'host_unique_open_paths', 'host_unique_rename_paths', 'host_unique_unlink_paths', 'host_unique_file_extensions', 'host_unique_file_directories', 'host_open_read_only_count', 'host_open_write_count', 'host_open_create_count', 'host_open_truncate_count', 'host_file_syscall_count', 'host_network_syscall_count', 'host_process_syscall_count', 'host_memory_syscall_count', 'host_other_traced_syscall_count', 'host_unique_remote_ips', 'host_unique_remote_ports', 'host_open_path_tmp_count', 'host_open_path_home_count', 'host_open_path_var_count')
+HOST_EVENT_ZERO = dict.fromkeys(HOST_EVENT_FEATURE_FIELDS, 0)
+EXEC_OBSERVATION_EVENTS = frozenset({'exec_success', 'exec_return'})
+TELEMETRY_SCHEMA_VERSION = '2026-10-23.24-capture-liveness-startup-diagnostic'
+DEFAULT_PACKET_CAPTURE_BUFFER_KB = 64 * 1024
+DEFAULT_BPFTRACE_PERF_RB_PAGES = 16 * 1024
+DEFAULT_PACKET_CAPTURE_DRAIN_MS = 1000
+NETWORK_RUNTIME_FEATURE_FIELDS = ('net_bytes_sent', 'net_bytes_recv', 'net_packets_sent', 'net_packets_recv', 'net_bytes_per_second', 'net_packets_per_second', 'net_packets_captured', 'net_bytes_captured', 'net_flow_count')
+
+def parse_bpftrace_lost_event_count(lines):
+    return sum((int(match.group(1)) for line in lines if (match := re.search('\\bLost\\s+(\\d+)\\s+events\\b', line, re.IGNORECASE))))
+
+def assess_collection_quality(packet_capture_enabled, packet_capture_status, packet_capture_dropped_by_kernel, ebpf_enabled, ebpf_status, ebpf_lost_event_count, packet_capture_buffer_restore_error=None, packet_capture_statistics=None, interface_counter_deltas=None, interface_link_state=None):
+    reasons = []
+    if not packet_capture_enabled and (not ebpf_enabled):
+        reasons.append('no_quality_sensors_enabled')
+    if packet_capture_enabled:
+        if packet_capture_status != 'active':
+            reasons.append('packet_capture_inactive')
+        if packet_capture_dropped_by_kernel is None:
+            reasons.append('packet_capture_drop_count_unavailable')
+        elif packet_capture_dropped_by_kernel > 0:
+            reasons.append(f'packet_capture_kernel_drops:{packet_capture_dropped_by_kernel}')
+        statistics = packet_capture_statistics or {}
+        packets_captured = statistics.get('packets_captured')
+        packets_received = statistics.get('packets_received_by_filter')
+        if packets_captured is None or packets_received is None or packet_capture_dropped_by_kernel is None:
+            reasons.append('packet_capture_counter_discrepancy_unavailable')
+        else:
+            discrepancy = packets_received - packets_captured - packet_capture_dropped_by_kernel
+            if discrepancy:
+                reasons.append(f'packet_capture_counter_discrepancy:{discrepancy}')
+        if packet_capture_buffer_restore_error:
+            reasons.append('packet_capture_buffer_restore_failed')
+        link_state = interface_link_state or {}
+        if link_state.get('carrier') == 0 or link_state.get('operstate') in INTERFACE_DOWN_OPERSTATES:
+            reasons.append(f"packet_capture_interface_link_down:{link_state.get('operstate')}/carrier={link_state.get('carrier')}")
+        deltas = interface_counter_deltas or {}
+        if packets_captured == 0 and deltas.get('rx_packets') == 0 and (deltas.get('tx_packets') == 0):
+            reasons.append('packet_capture_interface_no_traffic')
+    if ebpf_enabled:
+        if ebpf_status != 'active':
+            reasons.append('ebpf_inactive')
+        if ebpf_lost_event_count is None:
+            reasons.append('ebpf_loss_count_unavailable')
+        elif ebpf_lost_event_count > 0:
+            reasons.append(f'ebpf_events_lost:{ebpf_lost_event_count}')
+    return ('rejected' if reasons else 'accepted', reasons)
+
+def build_tcpdump_command(interface, pcap_path, buffer_size_kb, bpf=None):
+    command = ['sudo', '-S', '-p', '', '/usr/bin/tcpdump', '-U', '-n', '-B', str(buffer_size_kb), '--immediate-mode', '-i', interface, '-w', str(pcap_path), '-Z', 'root']
+    if bpf:
+        command.append(bpf)
+    return command
+
+def build_bpftrace_command(perf_rb_pages, runner_pid):
+    return ['sudo', '-S', '-p', '', '/usr/bin/env', f'BPFTRACE_PERF_RB_PAGES={perf_rb_pages}', '/usr/bin/bpftrace', '-e', ebpf_program(runner_pid)]
+INTERFACE_COUNTER_NAMES = ('rx_packets', 'rx_bytes', 'rx_dropped', 'tx_packets', 'tx_bytes', 'tx_dropped')
+INTERFACE_DOWN_OPERSTATES = ('down', 'lowerlayerdown', 'notpresent')
+
+def read_interface_link_state(interface, sysfs_root=Path('/sys/class/net')):
+    interface_dir = Path(sysfs_root) / interface
+    state = {'operstate': None, 'carrier': None}
+    try:
+        state['operstate'] = (interface_dir / 'operstate').read_text(encoding='ascii').strip()
+    except OSError:
+        pass
+    try:
+        state['carrier'] = int((interface_dir / 'carrier').read_text(encoding='ascii').strip())
+    except (OSError, ValueError):
+        pass
+    return state
+
+def read_interface_counters(interface, sysfs_root=Path('/sys/class/net')):
+    counters = {}
+    stats_dir = Path(sysfs_root) / interface / 'statistics'
+    for name in INTERFACE_COUNTER_NAMES:
+        try:
+            counters[name] = int((stats_dir / name).read_text(encoding='ascii').strip())
+        except (OSError, ValueError):
+            counters[name] = None
+    return counters
+
+def interface_counter_delta(before, after):
+    if before is None or after is None:
+        return None
+    return {name: after.get(name) - before.get(name) if isinstance(before.get(name), int) and isinstance(after.get(name), int) else None for name in INTERFACE_COUNTER_NAMES}
+
+def inspect_pcap_file(path):
+    pcap_path = Path(path)
+    result = {'exists': pcap_path.is_file(), 'size_bytes': None, 'record_count': None, 'error': None}
+    if not result['exists']:
+        result['error'] = 'pcap_file_missing'
+        return result
+    try:
+        result['size_bytes'] = pcap_path.stat().st_size
+        with pcap_path.open('rb') as capture:
+            magic = capture.read(4)
+            byte_order = {b'\xa1\xb2\xc3\xd4': '>', b'\xd4\xc3\xb2\xa1': '<', b'\xa1\xb2<M': '>', b'M<\xb2\xa1': '<'}.get(magic)
+            if byte_order is None:
+                result['error'] = 'unsupported_pcap_magic'
+                return result
+            if len(capture.read(20)) != 20:
+                result['error'] = 'truncated_pcap_global_header'
+                return result
+            record_count = 0
+            while True:
+                record_header = capture.read(16)
+                if not record_header:
+                    break
+                if len(record_header) != 16:
+                    result['error'] = 'truncated_pcap_record_header'
+                    break
+                captured_length = struct.unpack(f'{byte_order}I', record_header[8:12])[0]
+                if len(capture.read(captured_length)) != captured_length:
+                    result['error'] = 'truncated_pcap_record_data'
+                    break
+                record_count += 1
+            result['record_count'] = record_count
+    except OSError as error:
+        result['error'] = f'{type(error).__name__}: {error}'
+    return result
+HOST_RUNTIME_FEATURE_FIELDS = ('host_cpu_percent', 'host_memory_percent', 'host_process_count', 'host_new_pid_count', 'host_ended_pid_count', 'host_files_created', 'host_files_modified', 'host_files_deleted', 'host_files_moved', 'host_file_events_total', 'host_unique_extensions_touched', 'host_unique_directories_touched', 'host_ransom_note_like_files')
+SYSTEM_IO_FEATURE_FIELDS = ('disk_read_bytes', 'disk_write_bytes')
+_RUNNER_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+def malware_runner_sha256():
+    return _RUNNER_SHA256
+
+def telemetry_feature_groups():
+    return {'network_runtime': list(NETWORK_RUNTIME_FEATURE_FIELDS), 'p4_network': list(P4_NETWORK_FEATURE_FIELDS), 'pcap_network_extras': list(NETWORK_EXTRA_FEATURE_FIELDS), 'host_runtime': list(HOST_RUNTIME_FEATURE_FIELDS), 'hostmon_syscall_sequence': list(HOSTMON_FEATURE_FIELDS), 'host_event_extras': list(HOST_EVENT_FEATURE_FIELDS), 'ebpf_syscall_counts': ['ebpf_event_count', 'ebpf_unique_threads', *EBPF_COUNTER_FIELDS, *EBPF_VALUE_FIELDS], 'system_io': list(SYSTEM_IO_FEATURE_FIELDS)}
+
+def ensure_telemetry_feature_schema(row):
+    defaults = {**dict.fromkeys(NETWORK_RUNTIME_FEATURE_FIELDS, 0), **dict.fromkeys(HOST_RUNTIME_FEATURE_FIELDS, 0), **dict.fromkeys(SYSTEM_IO_FEATURE_FIELDS, 0), **P4_NETWORK_ZERO, **NETWORK_EXTRA_ZERO, 'ebpf_status': 'disabled', 'ebpf_event_count': 0, 'ebpf_unique_threads': 0, **dict.fromkeys(EBPF_COUNTER_FIELDS, 0), **dict.fromkeys(EBPF_VALUE_FIELDS, 0), **HOSTMON_ZERO, **HOST_EVENT_ZERO}
+    for (field, default) in defaults.items():
+        row.setdefault(field, default)
+    return row
+
+def hostmon_path_is_interesting(path):
+    if not path:
+        return False
+    ignored_prefixes = ('/proc/', '/sys/', '/dev/', '/run/', '/usr/', '/lib/', '/snap/')
+    return not path.startswith(ignored_prefixes)
+
+def hostmon_event_path(detail):
+    path = detail.partition('path=')[2]
+    if not path:
+        return ''
+    return path.split(' flags=', 1)[0].split(' dest=', 1)[0]
+
+def summarize_host_event_window(event_rows):
+    result = dict(HOST_EVENT_ZERO)
+    process_names = set()
+    pids = set()
+    tids = set()
+    exec_paths = set()
+    open_paths = set()
+    rename_paths = set()
+    unlink_paths = set()
+    file_extensions = set()
+    file_directories = set()
+    remote_ips = set()
+    remote_ports = set()
+    file_events = {'openat', 'openat2', 'openat_success', 'openat2_success', 'close', 'write', 'pwrite64', 'writev', 'file_write_success', 'file_pwrite64_success', 'file_writev_success', 'renameat', 'renameat2', 'unlinkat'}
+    network_events = {'connect', 'sendto', 'recvfrom', 'socket', 'bind', 'listen', 'accept', 'accept4'}
+    process_events = {'execve', 'execveat', 'fork', 'exit'}
+    memory_events = {'mmap', 'mprotect'}
+    known_events = file_events | network_events | process_events | memory_events
+
+    def add_file_path(path, destination=None):
+        if not path or not hostmon_path_is_interesting(path):
+            return
+        for candidate in (path, destination):
+            if not candidate or not hostmon_path_is_interesting(candidate):
+                continue
+            suffix = Path(candidate).suffix.lower()
+            if suffix:
+                file_extensions.add(suffix)
+            file_directories.add(str(Path(candidate).parent))
+    for event in event_rows:
+        name = event.get('event', '')
+        detail = event.get('detail', '')
+        comm = event.get('comm', '')
+        pid = event.get('pid')
+        tid = event.get('tid')
+        if comm:
+            process_names.add(comm)
+        if pid is not None:
+            pids.add(pid)
+        if tid is not None:
+            tids.add(tid)
+        result['host_file_syscall_count'] += int(name in file_events)
+        result['host_network_syscall_count'] += int(name in network_events)
+        result['host_process_syscall_count'] += int(name in process_events)
+        result['host_memory_syscall_count'] += int(name in memory_events)
+        result['host_other_traced_syscall_count'] += int(name not in known_events)
+        result['host_exec_event_count'] += int(name in {'execve', 'execveat'})
+        result['host_execveat_event_count'] += int(name == 'execveat')
+        result['host_fork_event_count'] += int(name == 'fork')
+        result['host_exit_event_count'] += int(name == 'exit')
+        if name == 'execve':
+            path = hostmon_event_path(detail)
+            if path and hostmon_path_is_interesting(path):
+                exec_paths.add(path)
+        elif name in {'openat', 'openat2'}:
+            path = hostmon_event_path(detail)
+            if path and hostmon_path_is_interesting(path):
+                open_paths.add(path)
+                add_file_path(path)
+                if path.startswith(('/tmp/', '/var/tmp/', '/dev/shm/')):
+                    result['host_open_path_tmp_count'] += 1
+                if path.startswith('/home/'):
+                    result['host_open_path_home_count'] += 1
+                if path.startswith('/var/'):
+                    result['host_open_path_var_count'] += 1
+                flag_value = next((item.partition('=')[2] for item in detail.split() if item.startswith('flags=')), '')
+                try:
+                    flags = int(flag_value)
+                except ValueError:
+                    flags = None
+                if flags is not None:
+                    access_mode = flags & os.O_ACCMODE
+                    result['host_open_read_only_count'] += int(access_mode == os.O_RDONLY)
+                    result['host_open_write_count'] += int(access_mode in {os.O_WRONLY, os.O_RDWR})
+                    result['host_open_create_count'] += int(bool(flags & os.O_CREAT))
+                    result['host_open_truncate_count'] += int(bool(flags & os.O_TRUNC))
+        elif name in {'renameat', 'renameat2'}:
+            source = hostmon_event_path(detail)
+            destination = detail.partition('dest=')[2]
+            if destination:
+                destination = destination.split(' flags=', 1)[0]
+            add_file_path(source, destination)
+            rename_paths.update((path for path in (source, destination) if path and hostmon_path_is_interesting(path)))
+        elif name == 'unlinkat':
+            path = hostmon_event_path(detail)
+            add_file_path(path)
+            if path and hostmon_path_is_interesting(path):
+                unlink_paths.add(path)
+        elif name == 'connect':
+            fields = dict((item.split('=', 1) for item in detail.split() if '=' in item))
+            address = fields.get('addr', '0')
+            port = fields.get('port', '0')
+            try:
+                address_number = int(address)
+                if address_number:
+                    remote_ips.add(str(ipaddress.IPv4Address(address_number)))
+            except (ValueError, ipaddress.AddressValueError):
+                pass
+            try:
+                port_number = int(port)
+                if port_number:
+                    remote_ports.add(port_number)
+            except ValueError:
+                pass
+    result.update({'host_unique_process_names': len(process_names), 'host_unique_pids': len(pids), 'host_unique_tids': len(tids), 'host_unique_exec_paths': len(exec_paths), 'host_unique_open_paths': len(open_paths), 'host_unique_rename_paths': len(rename_paths), 'host_unique_unlink_paths': len(unlink_paths), 'host_unique_file_extensions': len(file_extensions), 'host_unique_file_directories': len(file_directories), 'host_unique_remote_ips': len(remote_ips), 'host_unique_remote_ports': len(remote_ports)})
+    return result
+
+class HostMonProcessStats:
+
+    def __init__(self):
+        self.activity = Counter()
+        self.ips = set()
+        self.ports = set()
+        self.syscall_histogram = Counter()
+        self.total_syscalls = 0
+        self.unique_syscalls = 0
+        self.transition_count = 0
+        self.last_syscall = None
+        self.current_run_length = 0
+        self.run_count = 0
+        self.run_length_sum_closed = 0
+        self.max_run_length = 0
+        self.first_syscalls = []
+
+    def record_syscall(self, syscall_id):
+        self.total_syscalls += 1
+        if self.last_syscall is None:
+            self.last_syscall = syscall_id
+            self.current_run_length = 1
+            self.run_count = 1
+        elif self.last_syscall == syscall_id:
+            self.current_run_length += 1
+        else:
+            self.transition_count += 1
+            self.run_length_sum_closed += self.current_run_length
+            self.max_run_length = max(self.max_run_length, self.current_run_length)
+            self.last_syscall = syscall_id
+            self.current_run_length = 1
+            self.run_count += 1
+        if 0 <= syscall_id < HOSTMON_SYSCALL_LIMIT:
+            if not self.syscall_histogram[syscall_id]:
+                self.unique_syscalls += 1
+            self.syscall_histogram[syscall_id] += 1
+        if len(self.first_syscalls) < 100:
+            self.first_syscalls.append(syscall_id)
+
+    def record_activity(self, event_name, ip=0, port=0):
+        self.activity[event_name] += 1
+        if event_name == 'connect':
+            if ip and ip not in self.ips and (len(self.ips) < HOSTMON_UNIQUE_LIMIT):
+                self.ips.add(ip)
+            if port and port not in self.ports and (len(self.ports) < HOSTMON_UNIQUE_LIMIT):
+                self.ports.add(port)
+
+    def process_row(self):
+        if not (self.total_syscalls or any((self.activity[name] for name in ('exec', 'open', 'rename', 'unlink', 'connect')))):
+            return None
+        entropy = 0.0
+        max_frequency = 0
+        singleton_count = 0
+        for count in self.syscall_histogram.values():
+            probability = count / self.total_syscalls
+            entropy -= probability * math.log2(probability)
+            max_frequency = max(max_frequency, count)
+            singleton_count += count == 1
+        effective_max_run = max(self.max_run_length, self.current_run_length)
+        effective_run_sum = self.run_length_sum_closed + self.current_run_length
+        first50_unique = len(set(self.first_syscalls[:50]))
+        first100_unique = len(set(self.first_syscalls[:100]))
+        return {'exec': self.activity['exec'], 'open': self.activity['open'], 'ren': self.activity['rename'], 'del': self.activity['unlink'], 'conn': self.activity['connect'], 'uniqip': len(self.ips), 'uniqprt': len(self.ports), 'total_syscalls': self.total_syscalls, 'unique_syscalls': self.unique_syscalls, 'entropy': entropy, 'top_syscall_freq': max_frequency / self.total_syscalls if self.total_syscalls else 0.0, 'avg_run_length': effective_run_sum / self.run_count if self.run_count else 0.0, 'max_run_length': effective_max_run, 'transition_count': self.transition_count, 'rare_syscall_ratio': singleton_count / self.total_syscalls if self.total_syscalls else 0.0, 'first50_unique': first50_unique, 'first100_unique': first100_unique}
+
+def summarize_hostmon_window(process_stats):
+    process_rows = [row for stats in process_stats.values() if (row := stats.process_row())]
+    if not process_rows:
+        return dict(HOSTMON_ZERO)
+
+    def values(field):
+        return [row[field] for row in process_rows]
+
+    def average(field):
+        field_values = values(field)
+        return sum(field_values) / len(field_values) if field_values else 0.0
+
+    def maximum(field):
+        return max(values(field), default=0)
+    return {'host_active_processes': len(process_rows), 'host_exec_total': sum(values('exec')), 'host_open_total': sum(values('open')), 'host_rename_total': sum(values('ren')), 'host_unlink_total': sum(values('del')), 'host_connect_total': sum(values('conn')), 'host_unique_ip_total': sum(values('uniqip')), 'host_unique_port_total': sum(values('uniqprt')), 'host_total_syscalls_total': sum(values('total_syscalls')), 'host_unique_syscalls_mean': average('unique_syscalls'), 'host_unique_syscalls_max': maximum('unique_syscalls'), 'host_entropy_mean': average('entropy'), 'host_entropy_max': maximum('entropy'), 'host_top_syscall_freq_mean': average('top_syscall_freq'), 'host_top_syscall_freq_max': maximum('top_syscall_freq'), 'host_avg_run_length_mean': average('avg_run_length'), 'host_avg_run_length_max': maximum('avg_run_length'), 'host_max_run_length_mean': average('max_run_length'), 'host_max_run_length_max': maximum('max_run_length'), 'host_transition_count_total': sum(values('transition_count')), 'host_rare_syscall_ratio_mean': average('rare_syscall_ratio'), 'host_rare_syscall_ratio_max': maximum('rare_syscall_ratio'), 'host_first50_unique_mean': average('first50_unique'), 'host_first50_unique_max': maximum('first50_unique'), 'host_first100_unique_mean': average('first100_unique'), 'host_first100_unique_max': maximum('first100_unique')}
+
+def positive_integer(value):
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError('must be a positive integer') from error
+    if parsed < 1:
+        raise argparse.ArgumentTypeError('must be a positive integer')
+    return parsed
+
+def nonnegative_integer(value):
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError('must be a nonnegative integer') from error
+    if parsed < 0:
+        raise argparse.ArgumentTypeError('must be a nonnegative integer')
+    return parsed
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Run one malware sample and export telemetry and process output.')
+    parser.add_argument('sample', nargs='?', help='Sample filename in --samples-dir, or an existing sample path.')
+    parser.add_argument('--samples-dir', default='samples', help='Directory containing sample files (default: samples).')
+    parser.add_argument('--output-dir', default='runs', help='Directory for per-run output (default: runs).')
+    parser.add_argument('--timeout', type=float, default=20.0, help='Maximum sample runtime in seconds (default: 20).')
+    parser.add_argument('--window-sec', type=float, default=0.5, help='Telemetry window size in seconds (default: 0.5).')
+    parser.add_argument('--fixed-observation', action='store_true')
+    parser.add_argument('--common-launch-wrapper', action='store_true')
+    parser.add_argument('--watch-path', action='append', default=None, metavar='DIR', help='Extra directory to monitor for filesystem events, in addition to the sample workspace. Repeatable. Use this so file-writing malware that targets locations outside its cwd (for example /tmp, /home, /dev/shm) is actually measured instead of reporting zero host file events.')
+    parser.add_argument('--sample-args-file')
+    parser.add_argument('--iface', default=None, help='Network interface for packet capture, for example eth0.')
+    parser.add_argument('--bpf', default=None, help='Optional BPF packet filter.')
+    parser.add_argument('--packet-capture-password-file', default=None, help='One-use sudo password file for tcpdump packet capture.')
+    parser.add_argument('--packet-capture-buffer-kb', type=positive_integer, default=DEFAULT_PACKET_CAPTURE_BUFFER_KB, help='tcpdump capture buffer in KiB (default: 65536).')
+    parser.add_argument('--packet-capture-drain-ms', type=nonnegative_integer, default=DEFAULT_PACKET_CAPTURE_DRAIN_MS, help='Milliseconds to let tcpdump drain queued packets after observation (default: 1000).')
+    parser.add_argument('--ebpf-password-file', default=None, help='One-use sudo password file for a separate root bpftrace collector.')
+    parser.add_argument('--bpftrace-perf-rb-pages', type=positive_integer, default=DEFAULT_BPFTRACE_PERF_RB_PAGES, help='bpftrace perf ring-buffer pages per CPU (default: 16384).')
+    parser.add_argument('--label', default=None, help='Telemetry label (default: sample filename).')
+    parser.add_argument('--allow-execution', action='store_true', help='Required acknowledgement that the sample will execute.')
+    parser.add_argument('--print-feature-schema', action='store_true', help='Print the telemetry schema without selecting or executing a sample.')
+    return parser.parse_args()
+
+def classify_sample_artifact(sample):
+    """Record how a sample is launched so the launch mechanism can be audited.
+
+    Benign/malware launch asymmetry (for example benign shell scripts versus
+    malware ELF binaries) is a non-behavioural confound. Capturing the artifact
+    type per run lets the evaluation detect and stratify that confound instead
+    of letting a classifier separate samples by file format.
+    """
+    sample = Path(sample)
+    try:
+        with open(sample, 'rb') as handle:
+            header = handle.read(4)
+    except OSError:
+        return 'unreadable'
+    if header[:4] == b'\x7fELF':
+        return 'elf'
+    if header[:2] == b'#!':
+        return 'script_shebang'
+    if sample.suffix.lower() in ('.sh', '.bash'):
+        return 'script_extension'
+    return 'other'
+ELF_MACHINE_NAMES = {2: 'sparc', 3: 'i386', 4: 'm68k', 8: 'mips', 18: 'sparc32plus', 20: 'ppc', 21: 'ppc64', 22: 's390', 40: 'arm', 42: 'sh', 43: 'sparcv9', 62: 'x86_64', 183: 'aarch64', 243: 'riscv'}
+
+def read_binfmt_misc_entries(root=Path('/proc/sys/fs/binfmt_misc')):
+    """Parse enabled magic-type binfmt_misc handlers (name, interpreter, offset, magic, mask)."""
+    entries = []
+    try:
+        candidates = sorted(Path(root).iterdir())
+    except OSError:
+        return entries
+    for path in candidates:
+        if path.name in {'register', 'status'}:
+            continue
+        try:
+            lines = path.read_text(encoding='utf-8').splitlines()
+        except OSError:
+            continue
+        fields = {}
+        for line in lines:
+            (key, _, value) = line.strip().partition(' ')
+            fields[key.rstrip(':')] = value.strip()
+        if 'enabled' not in {line.strip() for line in lines} or 'magic' not in fields:
+            continue
+        try:
+            magic = bytes.fromhex(fields['magic'])
+            mask = bytes.fromhex(fields['mask']) if 'mask' in fields else b'\xff' * len(magic)
+            offset = int(fields.get('offset', '0'))
+        except ValueError:
+            continue
+        entries.append({'name': path.name, 'interpreter': fields.get('interpreter'), 'flags': fields.get('flags', ''), 'offset': offset, 'magic': magic, 'mask': mask})
+    return entries
+
+def _binfmt_matches(header, entry):
+    window = header[entry['offset']:entry['offset'] + len(entry['magic'])]
+    if len(window) != len(entry['magic']):
+        return False
+    return all((byte & mask == magic & mask for (byte, magic, mask) in zip(window, entry['magic'], entry['mask'])))
+
+def describe_target_artifact(sample, binfmt_entries=None):
+    """Static launch description: ELF machine/linkage/interpreter and execution mode."""
+    try:
+        with open(sample, 'rb') as handle:
+            data = handle.read(1 << 20)
+    except OSError as error:
+        return {'kind': 'unreadable', 'error': f'{type(error).__name__}: {error}'}
+    if data[:2] == b'#!':
+        shebang = data[2:].split(b'\n', 1)[0].decode('utf-8', 'replace').strip()
+        interpreter = shebang.split()[0] if shebang else ''
+        return {'kind': 'script', 'shebang': shebang, 'interpreter': interpreter, 'interpreter_present': bool(interpreter) and os.path.exists(interpreter), 'execution_mode': 'script'}
+    if data[:4] != b'\x7fELF' or len(data) < 52:
+        return {'kind': 'other' if data[:4] != b'\x7fELF' else 'elf_truncated', 'execution_mode': 'unsupported'}
+    (elf_class, elf_data) = (data[4], data[5])
+    order = {1: 'little', 2: 'big'}.get(elf_data)
+    if elf_class not in (1, 2) or order is None:
+        return {'kind': 'elf_invalid', 'execution_mode': 'unsupported'}
+    u16 = lambda offset: int.from_bytes(data[offset:offset + 2], order)
+    word = 8 if elf_class == 2 else 4
+    uword = lambda offset: int.from_bytes(data[offset:offset + word], order)
+    (e_type, machine) = (u16(16), u16(18))
+    phoff = uword(32 if elf_class == 2 else 28)
+    (phentsize, phnum) = (u16(54), u16(56)) if elf_class == 2 else (u16(42), u16(44))
+    (interpreter, headers_complete) = (None, True)
+    for index in range(phnum):
+        start = phoff + index * phentsize
+        if start + phentsize > len(data) or phentsize < (56 if elf_class == 2 else 32):
+            headers_complete = False
+            break
+        if int.from_bytes(data[start:start + 4], order) != 3:
+            continue
+        offset = uword(start + (8 if elf_class == 2 else 4))
+        size = uword(start + (32 if elf_class == 2 else 16))
+        if offset + size > len(data):
+            headers_complete = False
+            break
+        interpreter = data[offset:offset + size].split(b'\x00', 1)[0].decode('utf-8', 'replace')
+        break
+    linkage = 'dynamic' if interpreter else 'static-pie' if e_type == 3 else 'static'
+    entries = read_binfmt_misc_entries() if binfmt_entries is None else binfmt_entries
+    handler = next((entry for entry in entries if _binfmt_matches(data, entry)), None)
+    if handler is not None:
+        mode = 'binfmt_emulated'
+    elif elf_class == 2 and machine == 62:
+        mode = 'native'
+    elif elf_class == 1 and machine == 3:
+        mode = 'native_compat'
+    else:
+        mode = 'unsupported'
+    return {'kind': 'elf', 'elf_class': elf_class * 32, 'endianness': order, 'e_type': e_type, 'e_machine': machine, 'machine_name': ELF_MACHINE_NAMES.get(machine, 'unknown'), 'linkage': linkage, 'program_headers_complete': headers_complete, 'interpreter': interpreter, 'interpreter_present': None if interpreter is None else os.path.exists(interpreter), 'binfmt_handler': None if handler is None else handler['name'], 'binfmt_interpreter': None if handler is None else handler['interpreter'], 'binfmt_flags': None if handler is None else handler['flags'], 'execution_mode': mode}
+
+def resolve_sample(sample_arg, samples_dir):
+    requested = Path(sample_arg).expanduser()
+    candidate = requested if requested.exists() else Path(samples_dir).expanduser() / requested
+    sample = candidate.resolve()
+    if not sample.is_file():
+        raise FileNotFoundError(f'Sample file was not found: {candidate}')
+    if sample.suffix.lower() == '.zip':
+        raise ValueError('The sample is a ZIP archive. Extract it inside the isolated VM first; this runner does not extract or execute archives.')
+    if not os.access(sample, os.X_OK):
+        raise PermissionError(f"Sample is not executable: {sample}. Run 'chmod +x' inside the isolated VM.")
+    return sample
+
+def stop_process_group(process, grace_seconds=2.0):
+    if os.name == 'posix':
+        process.poll()
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        deadline = time.monotonic() + grace_seconds
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(process.pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+        else:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    elif process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=grace_seconds)
+        except subprocess.TimeoutExpired:
+            process.kill()
+    if process.poll() is None:
+        process.wait()
+
+def classify_sample_exit(return_code, timed_out, timeout_seconds, stdout_path, stderr_path):
+    if timed_out:
+        return ('timeout', f'Sample exceeded the {timeout_seconds:g}-second runtime limit.')
+    if return_code == 0:
+        return ('completed', None)
+
+    def read_log_lines(path):
+        try:
+            contents = path.read_text(encoding='utf-8', errors='replace')
+        except OSError as error:
+            return [f'{path.name} unavailable: {error}']
+        return [line.strip() for line in contents.splitlines() if line.strip()]
+    stderr_lines = read_log_lines(stderr_path)
+    stdout_lines = read_log_lines(stdout_path)
+    detail = stderr_lines[-1][:300] if stderr_lines else stdout_lines[-1][:300] if stdout_lines else 'No stdout/stderr detail; inspect the run logs.'
+    if any(('could not open' in line.lower() and 'no such file or directory' in line.lower() for line in stderr_lines)):
+        return ('runtime_dependency_missing', detail)
+    if return_code is not None and return_code < 0:
+        signal_number = -return_code
+        try:
+            signal_name = signal.Signals(signal_number).name
+        except ValueError:
+            signal_name = f'signal {signal_number}'
+        return ('signaled', f'Sample terminated by {signal_name}. {detail}')
+    return ('nonzero_exit', f'Sample exited with code {return_code}. {detail}')
+
+class FileEventState:
+
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.reset()
+
+    def reset(self):
+        with self.lock:
+            self.created = 0
+            self.modified = 0
+            self.deleted = 0
+            self.moved = 0
+            self.ransom_note_like_files = 0
+            self.extensions = set()
+            self.directories = set()
+
+    def record(self, path):
+        file_path = Path(path)
+        self.directories.add(str(file_path.parent))
+        if file_path.suffix:
+            self.extensions.add(file_path.suffix.lower())
+        if any((keyword in file_path.name.lower() for keyword in RANSOM_NOTE_KEYWORDS)):
+            self.ransom_note_like_files += 1
+
+    def snapshot_and_reset(self):
+        with self.lock:
+            result = {'host_files_created': self.created, 'host_files_modified': self.modified, 'host_files_deleted': self.deleted, 'host_files_moved': self.moved, 'host_file_events_total': self.created + self.modified + self.deleted + self.moved, 'host_unique_extensions_touched': len(self.extensions), 'host_unique_directories_touched': len(self.directories), 'host_ransom_note_like_files': self.ransom_note_like_files}
+            self.reset()
+            return result
+
+class FileEventHandler(FileSystemEventHandler):
+
+    def __init__(self, state):
+        self.state = state
+
+    def on_created(self, event):
+        if event.is_directory:
+            return
+        with self.state.lock:
+            self.state.created += 1
+            self.state.record(event.src_path)
+
+    def on_modified(self, event):
+        if event.is_directory:
+            return
+        with self.state.lock:
+            self.state.modified += 1
+            self.state.record(event.src_path)
+
+    def on_deleted(self, event):
+        if event.is_directory:
+            return
+        with self.state.lock:
+            self.state.deleted += 1
+            self.state.record(event.src_path)
+
+    def on_moved(self, event):
+        if event.is_directory:
+            return
+        with self.state.lock:
+            self.state.moved += 1
+            self.state.record(event.src_path)
+            self.state.record(event.dest_path)
+
+class P4NetworkAccumulator:
+
+    def __init__(self, window_seconds, active_ttl_windows=3):
+        self.window_seconds = max(float(window_seconds), 0.001)
+        self.active_ttl_windows = active_ttl_windows
+        self.first_source_by_flow = {}
+        self.flow_state = {}
+        self.last_seen_window = {}
+        self.window_deltas = defaultdict(dict)
+
+    def record_packet(self, window_id, timestamp, source_ip, source_port, destination_ip, destination_port, protocol, packet_length, tcp_flags=0):
+        source = (source_ip, int(source_port))
+        destination = (destination_ip, int(destination_port))
+        key = (int(protocol), *sorted((source, destination)))
+        first_source = self.first_source_by_flow.setdefault(key, source)
+        direction = 'ab' if source == first_source else 'ba'
+        syn = int(bool(tcp_flags & 2))
+        ack = int(bool(tcp_flags & 16))
+        rst = int(bool(tcp_flags & 4))
+        state = self.flow_state.setdefault(key, {'packets': 0, 'bytes': 0, 'ab_packets': 0, 'ab_bytes': 0, 'ba_packets': 0, 'ba_bytes': 0, 'min_len': packet_length, 'max_len': packet_length, 'first_ts': timestamp, 'last_ts': timestamp, 'syn': 0, 'ack': 0, 'rst': 0})
+        state['packets'] += 1
+        state['bytes'] += packet_length
+        state[f'{direction}_packets'] += 1
+        state[f'{direction}_bytes'] += packet_length
+        state['min_len'] = min(state['min_len'], packet_length)
+        state['max_len'] = max(state['max_len'], packet_length)
+        state['first_ts'] = min(state['first_ts'], timestamp)
+        state['last_ts'] = max(state['last_ts'], timestamp)
+        state['syn'] += syn
+        state['ack'] += ack
+        state['rst'] += rst
+        self.last_seen_window[key] = max(window_id, self.last_seen_window.get(key, window_id))
+        delta = self.window_deltas[window_id].setdefault(key, {'packets': 0, 'bytes': 0, 'ab_packets': 0, 'ab_bytes': 0, 'ba_packets': 0, 'ba_bytes': 0, 'syn': 0, 'ack': 0, 'rst': 0})
+        delta['packets'] += 1
+        delta['bytes'] += packet_length
+        delta[f'{direction}_packets'] += 1
+        delta[f'{direction}_bytes'] += packet_length
+        delta['syn'] += syn
+        delta['ack'] += ack
+        delta['rst'] += rst
+
+    def summarize_window(self, window_id):
+        result = dict(P4_NETWORK_ZERO)
+        window_deltas = self.window_deltas.pop(window_id, {})
+        active_keys = [key for (key, last_seen) in self.last_seen_window.items() if 0 <= window_id - last_seen <= self.active_ttl_windows]
+        min_lengths = []
+        max_lengths = []
+        durations = []
+        for key in active_keys:
+            state = self.flow_state[key]
+            delta = window_deltas.get(key, {})
+            for (field, delta_key) in (('net_pkts_total_delta', 'packets'), ('net_bytes_total_delta', 'bytes'), ('net_pkts_ab_delta', 'ab_packets'), ('net_bytes_ab_delta', 'ab_bytes'), ('net_pkts_ba_delta', 'ba_packets'), ('net_bytes_ba_delta', 'ba_bytes'), ('net_syn_delta', 'syn'), ('net_ack_delta', 'ack'), ('net_rst_delta', 'rst')):
+                result[field] += delta.get(delta_key, 0)
+            min_lengths.append(state['min_len'])
+            max_lengths.append(state['max_len'])
+            durations.append(max(state['last_ts'] - state['first_ts'], 0.0))
+            result['net_flows_with_ab'] += int(state['ab_packets'] > 0)
+            result['net_flows_with_ba'] += int(state['ba_packets'] > 0)
+            result['net_dir_valid_count'] += 1
+        packets = result['net_pkts_total_delta']
+        byte_count = result['net_bytes_total_delta']
+        ab_packets = result['net_pkts_ab_delta']
+        ab_bytes = result['net_bytes_ab_delta']
+        ba_packets = result['net_pkts_ba_delta']
+        ba_bytes = result['net_bytes_ba_delta']
+        result.update({'net_flow_count_seen': len(active_keys), 'net_min_len_mean': sum(min_lengths) / len(min_lengths) if min_lengths else 0.0, 'net_max_len_mean': sum(max_lengths) / len(max_lengths) if max_lengths else 0.0, 'net_min_len_min': min(min_lengths, default=0), 'net_max_len_max': max(max_lengths, default=0), 'net_avg_pkt_size_delta': byte_count / packets if packets else 0.0, 'net_avg_pkt_size_ab_delta': ab_bytes / ab_packets if ab_packets else 0.0, 'net_avg_pkt_size_ba_delta': ba_bytes / ba_packets if ba_packets else 0.0, 'net_flow_duration_mean': sum(durations) / len(durations) if durations else 0.0, 'net_flow_duration_max': max(durations, default=0.0), 'net_bytes_per_sec_delta': byte_count / self.window_seconds, 'net_pkts_per_sec_delta': packets / self.window_seconds, 'net_down_up_ratio_delta': ba_bytes / ab_bytes if ab_bytes else 0.0, 'net_ab_ratio_pkt_delta': ab_packets / packets if packets else 0.0, 'net_ba_ratio_pkt_delta': ba_packets / packets if packets else 0.0, 'net_ab_ratio_byte_delta': ab_bytes / byte_count if byte_count else 0.0, 'net_ba_ratio_byte_delta': ba_bytes / byte_count if byte_count else 0.0})
+        return result
+
+class NetworkPacketFeatureAccumulator:
+
+    def __init__(self):
+        self.windows = {}
+
+    @staticmethod
+    def _new_window():
+        return {'tcp': 0, 'udp': 0, 'icmp': 0, 'other_ip': 0, 'ipv6': 0, 'tcp_fin': 0, 'tcp_psh': 0, 'tcp_urg': 0, 'source_ips': set(), 'destination_ips': set(), 'source_ports': set(), 'destination_ports': set(), 'protocols': set(), 'packet_sizes': [], 'timestamps': [], 'small_packets': 0, 'large_packets': 0, 'dns_packets': 0, 'http_packets': 0, 'tls_packets': 0, 'flow_packets': Counter(), 'flow_bytes': Counter()}
+
+    def record_packet(self, window_id, packet):
+        if packet.haslayer('IP'):
+            ip_layer = packet.getlayer('IP')
+            protocol = int(ip_layer.proto)
+            ipv6 = False
+        elif packet.haslayer('IPv6'):
+            ip_layer = packet.getlayer('IPv6')
+            protocol = int(ip_layer.nh)
+            ipv6 = True
+        else:
+            return
+        state = self.windows.setdefault(window_id, self._new_window())
+        packet_size = len(packet)
+        timestamp = float(packet.time)
+        source_ip = str(ip_layer.src)
+        destination_ip = str(ip_layer.dst)
+        transport = packet.getlayer('TCP') or packet.getlayer('UDP')
+        source_port = int(transport.sport) if transport is not None else -1
+        destination_port = int(transport.dport) if transport is not None else -1
+        endpoint_pair = sorted(((source_ip, source_port), (destination_ip, destination_port)))
+        flow_key = (protocol, *endpoint_pair)
+        state['source_ips'].add(source_ip)
+        state['destination_ips'].add(destination_ip)
+        state['protocols'].add(protocol)
+        state['packet_sizes'].append(packet_size)
+        state['timestamps'].append(timestamp)
+        state['flow_packets'][flow_key] += 1
+        state['flow_bytes'][flow_key] += packet_size
+        state['small_packets'] += int(packet_size < 128)
+        state['large_packets'] += int(packet_size >= 1200)
+        state['ipv6'] += int(ipv6)
+        if protocol == 6:
+            state['tcp'] += 1
+            if packet.haslayer('TCP'):
+                flags = int(packet.getlayer('TCP').flags)
+                state['tcp_fin'] += int(bool(flags & 1))
+                state['tcp_psh'] += int(bool(flags & 8))
+                state['tcp_urg'] += int(bool(flags & 32))
+        elif protocol == 17:
+            state['udp'] += 1
+        elif protocol in (1, 58):
+            state['icmp'] += 1
+        else:
+            state['other_ip'] += 1
+        if transport is not None:
+            state['source_ports'].add(source_port)
+            state['destination_ports'].add(destination_port)
+            ports = {source_port, destination_port}
+            state['dns_packets'] += int(53 in ports)
+            state['http_packets'] += int(bool(ports & {80, 8080}))
+            state['tls_packets'] += int(bool(ports & {443, 8443}))
+
+    def summarize_window(self, window_id):
+        state = self.windows.pop(window_id, None)
+        result = dict(NETWORK_EXTRA_ZERO)
+        if state is None:
+            return result
+        sizes = state['packet_sizes']
+        timestamps = sorted(state['timestamps'])
+        interarrival = [max(right - left, 0.0) for (left, right) in zip(timestamps, timestamps[1:])]
+        interarrival_mean = sum(interarrival) / len(interarrival) if interarrival else 0.0
+        interarrival_variance = sum(((value - interarrival_mean) ** 2 for value in interarrival)) / len(interarrival) if interarrival else 0.0
+        size_mean = sum(sizes) / len(sizes) if sizes else 0.0
+        size_variance = sum(((value - size_mean) ** 2 for value in sizes)) / len(sizes) if sizes else 0.0
+        flow_packet_counts = list(state['flow_packets'].values())
+        result.update({'net_tcp_packets': state['tcp'], 'net_udp_packets': state['udp'], 'net_icmp_packets': state['icmp'], 'net_other_ip_packets': state['other_ip'], 'net_ipv6_packets': state['ipv6'], 'net_tcp_fin_packets': state['tcp_fin'], 'net_tcp_psh_packets': state['tcp_psh'], 'net_tcp_urg_packets': state['tcp_urg'], 'net_unique_source_ips': len(state['source_ips']), 'net_unique_destination_ips': len(state['destination_ips']), 'net_unique_source_ports': len(state['source_ports']), 'net_unique_destination_ports': len(state['destination_ports']), 'net_unique_ip_protocols': len(state['protocols']), 'net_packet_size_std': math.sqrt(size_variance), 'net_packet_size_max': max(sizes, default=0), 'net_interarrival_mean_sec': interarrival_mean, 'net_interarrival_std_sec': math.sqrt(interarrival_variance), 'net_interarrival_min_sec': min(interarrival, default=0.0), 'net_interarrival_max_sec': max(interarrival, default=0.0), 'net_small_packet_count': state['small_packets'], 'net_large_packet_count': state['large_packets'], 'net_dns_port_packet_count': state['dns_packets'], 'net_http_port_packet_count': state['http_packets'], 'net_tls_port_packet_count': state['tls_packets'], 'net_unique_5tuple_count': len(state['flow_packets']), 'net_flow_packets_mean': sum(flow_packet_counts) / len(flow_packet_counts) if flow_packet_counts else 0.0, 'net_flow_packets_max': max(flow_packet_counts, default=0), 'net_flow_bytes_max': max(state['flow_bytes'].values(), default=0)})
+        return result
+
+class PacketCollector:
+
+    def __init__(self, interface, bpf, password_file=None, pcap_path=None, window_seconds=0.5, buffer_size_kb=DEFAULT_PACKET_CAPTURE_BUFFER_KB, drain_ms=DEFAULT_PACKET_CAPTURE_DRAIN_MS):
+        self.interface = interface
+        self.bpf = bpf
+        self.password_file = Path(password_file) if password_file else None
+        self.pcap_path = Path(pcap_path) if pcap_path else None
+        self.uses_pcap = self.password_file is not None
+        self.window_seconds = max(float(window_seconds), 0.001)
+        self.buffer_size_kb = int(buffer_size_kb)
+        if self.buffer_size_kb < 1:
+            raise ValueError('packet capture buffer size must be positive')
+        self.drain_ms = int(drain_ms)
+        if self.drain_ms < 0:
+            raise ValueError('packet capture drain time must be nonnegative')
+        self.original_rmem_max = None
+        self.rmem_max_during_capture = None
+        self.effective_rmem_max = None
+        self.buffer_restore_error = None
+        self.sample_started_wall = None
+        self.next_window_id = 0
+        self.p4_network = P4NetworkAccumulator(self.window_seconds)
+        self.network_extra = NetworkPacketFeatureAccumulator()
+        self.lock = threading.RLock()
+        self.packet_count = 0
+        self.byte_count = 0
+        self.flows = set()
+        self.sniffer = None
+        self.process = None
+        self.stderr_thread = None
+        self.ready = threading.Event()
+        self.stderr_lines = []
+        self.sudo_password = bytearray()
+        self.error = None
+        self.interface_counters_before_sample = None
+        self.interface_link_state_before_sample = None
+        self.interface_counters_after_drain = None
+        self.interface_counters_after_capture = None
+        self.interface_counter_deltas = None
+        self.lifecycle_events = []
+        self.stderr_events = []
+
+    def _record_lifecycle_event(self, event, **details):
+        with self.lock:
+            self.lifecycle_events.append({'event': event, 'wall_time_ns': time.time_ns(), 'monotonic_ns': time.monotonic_ns(), **details})
+
+    def _record(self, packet):
+        with self.lock:
+            self.packet_count += 1
+            self.byte_count += len(packet)
+            if packet.haslayer('IP'):
+                ip_layer = packet.getlayer('IP')
+                protocol = str(ip_layer.proto)
+            elif packet.haslayer('IPv6'):
+                ip_layer = packet.getlayer('IPv6')
+                protocol = str(ip_layer.nh)
+            else:
+                return
+            transport = packet.getlayer('TCP') or packet.getlayer('UDP')
+            flow = (ip_layer.src, ip_layer.dst, protocol)
+            if transport is not None:
+                flow += (transport.sport, transport.dport)
+            self.flows.add(flow)
+            if self.sample_started_wall is not None:
+                timestamp = float(packet.time)
+                offset = timestamp - self.sample_started_wall
+                if offset >= 0:
+                    window_id = int(offset / self.window_seconds)
+                    self.network_extra.record_packet(window_id, packet)
+                    self._record_p4_packet(packet, window_id, timestamp)
+
+    def set_sample_start(self, started_wall):
+        with self.lock:
+            self.sample_started_wall = started_wall
+            self.interface_counters_before_sample = read_interface_counters(self.interface)
+            self.interface_link_state_before_sample = read_interface_link_state(self.interface)
+
+    def _record_p4_packet(self, packet, window_id, timestamp=None, accumulator=None):
+        if not packet.haslayer('IP') or not (packet.haslayer('TCP') or packet.haslayer('UDP')):
+            return
+        ip_layer = packet.getlayer('IP')
+        transport = packet.getlayer('TCP') or packet.getlayer('UDP')
+        tcp_flags = int(packet.getlayer('TCP').flags) if packet.haslayer('TCP') else 0
+        (accumulator or self.p4_network).record_packet(window_id, float(packet.time) if timestamp is None else timestamp, ip_layer.src, transport.sport, ip_layer.dst, transport.dport, ip_layer.proto, len(packet), tcp_flags)
+
+    def start(self):
+        if self.uses_pcap:
+            self._start_tcpdump()
+            return
+        from scapy.all import AsyncSniffer
+        self.sniffer = AsyncSniffer(iface=self.interface, filter=self.bpf, prn=self._record, store=False)
+        try:
+            self.sniffer.start()
+        except (OSError, PermissionError, RuntimeError) as error:
+            self.error = f'{type(error).__name__}: {error}'
+            raise RuntimeError(f'Packet capture could not start: {self.error}') from error
+
+    def _read_stderr(self):
+        for line in self.process.stderr:
+            message = line.rstrip()
+            with self.lock:
+                self.stderr_lines.append(message)
+                lowered = message.lower()
+                if any((token in lowered for token in ('listening on', 'packets captured', 'packets received by filter', 'packets dropped by kernel', 'warning', 'error'))):
+                    self.stderr_events.append({'wall_time_ns': time.time_ns(), 'monotonic_ns': time.monotonic_ns(), 'line': message})
+            if 'listening on' in message.lower():
+                self.ready.set()
+
+    def _run_sudo(self, command):
+        return subprocess.run(['sudo', '-S', '-p', '', *command], input=bytes(self.sudo_password) + b'\n', stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10, check=False)
+
+    def _configure_receive_buffer_limit(self):
+        result = self._run_sudo(['/usr/sbin/sysctl', '-n', 'net.core.rmem_max'])
+        if result.returncode:
+            detail = result.stderr.decode('utf-8', errors='replace').strip()
+            raise RuntimeError(detail or 'Could not read net.core.rmem_max')
+        try:
+            original = int(result.stdout.decode('ascii').strip())
+        except ValueError as error:
+            raise RuntimeError('sysctl returned an invalid net.core.rmem_max') from error
+        self.original_rmem_max = original
+        requested = self.buffer_size_kb * 1024
+        desired = max(original, requested * 2)
+        if desired > original:
+            result = self._run_sudo(['/usr/sbin/sysctl', '-w', f'net.core.rmem_max={desired}'])
+            if result.returncode:
+                detail = result.stderr.decode('utf-8', errors='replace').strip()
+                raise RuntimeError(detail or 'Could not raise net.core.rmem_max for tcpdump')
+            self.rmem_max_during_capture = desired
+        self.effective_rmem_max = desired
+
+    def _restore_receive_buffer_limit(self):
+        if self.original_rmem_max is None or self.effective_rmem_max == self.original_rmem_max:
+            return
+        result = self._run_sudo(['/usr/sbin/sysctl', '-w', f'net.core.rmem_max={self.original_rmem_max}'])
+        if result.returncode:
+            detail = result.stderr.decode('utf-8', errors='replace').strip()
+            self.buffer_restore_error = detail or 'Could not restore net.core.rmem_max'
+            with self.lock:
+                self.stderr_lines.append(f'WARNING: {self.buffer_restore_error}')
+        else:
+            self.effective_rmem_max = self.original_rmem_max
+
+    def _start_tcpdump(self):
+        try:
+            password = self.password_file.read_text(encoding='utf-8').rstrip('\r\n')
+        except OSError as error:
+            raise RuntimeError(f'Could not read packet-capture sudo password file: {error}') from error
+        finally:
+            self.password_file.unlink(missing_ok=True)
+        if not password:
+            raise RuntimeError('The packet-capture sudo password file was empty')
+        if self.pcap_path is None:
+            raise RuntimeError('A PCAP output path is required for privileged packet capture')
+        self.sudo_password = bytearray(password.encode('utf-8'))
+        self._configure_receive_buffer_limit()
+        command = build_tcpdump_command(self.interface, self.pcap_path, self.buffer_size_kb, self.bpf)
+        try:
+            self._record_lifecycle_event('tcpdump_spawn_requested', interface=self.interface, pcap_path=str(self.pcap_path), buffer_size_kb=self.buffer_size_kb, bpf_filter=self.bpf, immediate_mode=True)
+            self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, bufsize=1, start_new_session=True, umask=63)
+            self._record_lifecycle_event('tcpdump_process_started', pid=self.process.pid)
+            self.stderr_thread = threading.Thread(target=self._read_stderr, daemon=True)
+            self.stderr_thread.start()
+            self.process.stdin.write(password + '\n')
+            self.process.stdin.close()
+            del password
+            if not self.ready.wait(timeout=10):
+                with self.lock:
+                    details = '; '.join(self.stderr_lines[-4:])
+                raise RuntimeError(details or 'tcpdump did not start packet capture')
+            self._record_lifecycle_event('tcpdump_ready', pid=self.process.pid)
+            clear_result = subprocess.run(['sudo', '-K'], capture_output=True, text=True, timeout=5, check=False)
+            if clear_result.returncode:
+                raise RuntimeError('Could not clear sudo credentials after starting tcpdump')
+        except Exception as error:
+            self.error = f'{type(error).__name__}: {error}'
+            self.stop()
+            raise RuntimeError(f'Packet capture could not start: {self.error}') from error
+
+    def snapshot_and_reset(self, window_id=None):
+        if self.uses_pcap:
+            return {'net_packets_captured': 0, 'net_bytes_captured': 0, 'net_flow_count': 0, **P4_NETWORK_ZERO, **NETWORK_EXTRA_ZERO}
+        with self.lock:
+            result = {'net_packets_captured': self.packet_count, 'net_bytes_captured': self.byte_count, 'net_flow_count': len(self.flows)}
+            current_window = self.next_window_id if window_id is None else window_id
+            self.next_window_id = max(self.next_window_id, current_window + 1)
+            result.update(self.p4_network.summarize_window(current_window))
+            result.update(self.network_extra.summarize_window(current_window))
+            self.packet_count = 0
+            self.byte_count = 0
+            self.flows.clear()
+            return result
+
+    def stop(self):
+        if self.uses_pcap:
+            self._record_lifecycle_event('stop_requested', pid=self.process.pid if self.process is not None else None, return_code=self.process.poll() if self.process is not None else None)
+        if self.process is not None and self.process.poll() is None:
+            try:
+                if self.uses_pcap and self.sample_started_wall is not None and self.drain_ms:
+                    time.sleep(self.drain_ms / 1000)
+                if self.uses_pcap:
+                    if self.sample_started_wall is not None:
+                        self.interface_counters_after_drain = read_interface_counters(self.interface)
+                    self._record_lifecycle_event('drain_completed', drain_ms=self.drain_ms, interface_counters=self.interface_counters_after_drain)
+                os.killpg(self.process.pid, signal.SIGINT)
+                if self.uses_pcap:
+                    self._record_lifecycle_event('sigint_sent', pid=self.process.pid)
+                self.process.wait(timeout=10)
+                if self.uses_pcap:
+                    self._record_lifecycle_event('tcpdump_process_exited', pid=self.process.pid, return_code=getattr(self.process, 'returncode', None))
+            except (OSError, subprocess.SubprocessError) as error:
+                if self.uses_pcap:
+                    self._record_lifecycle_event('sigint_shutdown_error', error=f'{type(error).__name__}: {error}')
+                try:
+                    os.killpg(self.process.pid, signal.SIGKILL)
+                    if self.uses_pcap:
+                        self._record_lifecycle_event('sigkill_sent', pid=self.process.pid)
+                except OSError as kill_error:
+                    if self.uses_pcap:
+                        self._record_lifecycle_event('sigkill_error', error=f'{type(kill_error).__name__}: {kill_error}')
+                try:
+                    self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+                if self.uses_pcap:
+                    self._record_lifecycle_event('tcpdump_process_exited_after_escalation', pid=self.process.pid, return_code=self.process.poll())
+        elif self.uses_pcap and self.process is not None:
+            self._record_lifecycle_event('tcpdump_already_exited', pid=self.process.pid, return_code=getattr(self.process, 'returncode', None))
+        if self.stderr_thread is not None:
+            self.stderr_thread.join(timeout=5)
+            if self.uses_pcap:
+                self._record_lifecycle_event('tcpdump_stderr_reader_joined', still_alive=self.stderr_thread.is_alive())
+        if self.sniffer is not None:
+            self.sniffer.stop()
+        if self.sample_started_wall is not None:
+            self.interface_counters_after_capture = read_interface_counters(self.interface)
+            self.interface_counter_deltas = interface_counter_delta(self.interface_counters_before_sample, self.interface_counters_after_capture)
+            if self.uses_pcap:
+                self._record_lifecycle_event('interface_counters_after_capture', counters=self.interface_counters_after_capture)
+        if self.uses_pcap:
+            if self.original_rmem_max is not None and self.effective_rmem_max != self.original_rmem_max:
+                try:
+                    self._restore_receive_buffer_limit()
+                except (OSError, subprocess.SubprocessError) as error:
+                    self.buffer_restore_error = f'{type(error).__name__}: {error}'
+                    with self.lock:
+                        self.stderr_lines.append(f'WARNING: {self.buffer_restore_error}')
+            subprocess.run(['sudo', '-K'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+
+    def publish_pcap(self, destination):
+        try:
+            if self.pcap_path is None or not self.sudo_password:
+                return
+            source = self.pcap_path
+            result = subprocess.run(['sudo', '-S', '-p', '', '/usr/bin/install', '-m', '0644', '--', str(source), str(destination)], input=bytes(self.sudo_password) + b'\n', stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=10, check=False)
+            if result.returncode:
+                detail = result.stderr.decode('utf-8', errors='replace').strip()
+                raise RuntimeError(detail or 'Could not publish protected packet capture')
+            self.pcap_path = Path(destination)
+            subprocess.run(['sudo', '-n', '/usr/bin/rm', '-f', '--', str(source)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+        finally:
+            subprocess.run(['sudo', '-K'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+            for index in range(len(self.sudo_password)):
+                self.sudo_password[index] = 0
+
+    def collect_by_window(self, sample_started_wall, window_seconds, window_count):
+        from scapy.layers.inet import IP
+        from scapy.layers.inet6 import IPv6
+        from scapy.layers.l2 import Ether
+        from scapy.utils import PcapReader
+        packet_counts = defaultdict(int)
+        byte_counts = defaultdict(int)
+        flows_by_window = defaultdict(set)
+        p4_network = P4NetworkAccumulator(window_seconds)
+        network_extra = NetworkPacketFeatureAccumulator()
+        if self.pcap_path is None or not self.pcap_path.exists():
+            return {}
+        results = {}
+        next_window = 0
+
+        def finish_window(window_id):
+            results[window_id] = {'net_packets_captured': packet_counts[window_id], 'net_bytes_captured': byte_counts[window_id], 'net_flow_count': len(flows_by_window[window_id]), **p4_network.summarize_window(window_id), **network_extra.summarize_window(window_id)}
+        with PcapReader(str(self.pcap_path)) as capture:
+            for packet in capture:
+                offset = float(packet.time) - sample_started_wall
+                if offset < 0:
+                    continue
+                window_id = int(offset / window_seconds)
+                if window_id < 0 or window_id >= window_count:
+                    continue
+                if window_id < next_window:
+                    raise ValueError('PCAP packets cross windows out of timestamp order')
+                while next_window < window_id:
+                    finish_window(next_window)
+                    next_window += 1
+                if not packet.haslayer(IP) and (not packet.haslayer(IPv6)):
+                    packet = Ether(bytes(packet))
+                packet_counts[window_id] += 1
+                byte_counts[window_id] += len(packet)
+                if packet.haslayer(IP):
+                    ip_layer = packet.getlayer(IP)
+                    protocol = str(ip_layer.proto)
+                elif packet.haslayer(IPv6):
+                    ip_layer = packet.getlayer(IPv6)
+                    protocol = str(ip_layer.nh)
+                else:
+                    continue
+                network_extra.record_packet(window_id, packet)
+                transport = packet.getlayer('TCP') or packet.getlayer('UDP')
+                flow = (ip_layer.src, ip_layer.dst, protocol)
+                if transport is not None:
+                    flow += (transport.sport, transport.dport)
+                flows_by_window[window_id].add(flow)
+                self._record_p4_packet(packet, window_id, float(packet.time), accumulator=p4_network)
+        while next_window < window_count:
+            finish_window(next_window)
+            next_window += 1
+        return results
+
+    def write_log(self, path):
+        with self.lock:
+            lines = list(self.stderr_lines)
+        Path(path).write_text('\n'.join(lines) + ('\n' if lines else ''), encoding='utf-8')
+
+    def dropped_by_kernel(self):
+        return self.capture_stats()['dropped_by_kernel']
+
+    def capture_stats(self):
+        with self.lock:
+            lines = list(self.stderr_lines)
+        result = {'packets_captured': None, 'packets_received_by_filter': None, 'dropped_by_kernel': None}
+        patterns = {'packets_captured': re.compile('^\\s*(\\d+)\\s+packets captured\\b', re.IGNORECASE), 'packets_received_by_filter': re.compile('^\\s*(\\d+)\\s+packets received by filter\\b', re.IGNORECASE), 'dropped_by_kernel': re.compile('^\\s*(\\d+)\\s+packets dropped by kernel\\b', re.IGNORECASE)}
+        for line in lines:
+            for (name, pattern) in patterns.items():
+                match = pattern.search(line)
+                if match:
+                    result[name] = int(match.group(1))
+        return result
+
+def _bpftrace_connect_decode(sockaddr_expr, addrlen_expr):
+    return f'$sa = (uint64)({sockaddr_expr}); $salen = (uint64)({addrlen_expr}); $family = 0; if ($sa != 0 && $salen >= 2) {{ $family = *uptr((uint16 *)$sa); }} if ($sa != 0 && $salen >= 16 && $family == 2) {{ $port = (*uptr((uint8 *)($sa + 2)) << 8) | *uptr((uint8 *)($sa + 3)); $address = (*uptr((uint8 *)($sa + 4)) << 24) | (*uptr((uint8 *)($sa + 5)) << 16) | (*uptr((uint8 *)($sa + 6)) << 8) | *uptr((uint8 *)($sa + 7)); printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\tconnect\\taddr=%u port=%u family=%u\\n", nsecs, pid, tid, comm, $address, $port, $family); }} else {{ printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\tconnect\\taddr=0 port=0 family=%u\\n", nsecs, pid, tid, comm, $family); }}'
+X86_COMPAT_EXPR = '(curtask->thread_info.status & 2)'
+X86_RAW_PATH_EVENTS = (('execve', 59, 11, 'path=%s', 'str(uptr(args->args[0]))'), ('execveat', 322, 358, 'path=%s', 'str(uptr(args->args[1]))'), ('openat', 257, 295, 'path=%s flags=%lu', 'str(uptr(args->args[1])), args->args[2]'), ('openat2', 437, 437, 'path=%s', 'str(uptr(args->args[1]))'), ('renameat', 264, 302, 'path=%s dest=%s', 'str(uptr(args->args[1])), str(uptr(args->args[3]))'), ('renameat2', 316, 353, 'path=%s dest=%s', 'str(uptr(args->args[1])), str(uptr(args->args[3]))'), ('unlinkat', 263, 301, 'path=%s', 'str(uptr(args->args[1]))'))
+X86_RAW_CONNECT_IDS = (42, 362)
+I386_SOCKETCALL_EVENTS = {1: 'socket', 2: 'bind', 4: 'listen', 5: 'accept', 11: 'sendto', 12: 'recvfrom', 18: 'accept4'}
+I386_COMPAT_EXIT_EVENTS = ((295, 'openat_success', 'fd', '>='), (437, 'openat2_success', 'fd', '>='), (4, 'file_write_success', 'bytes', '>'), (181, 'file_pwrite64_success', 'bytes', '>'), (146, 'file_writev_success', 'bytes', '>'))
+
+def _x86_raw_dispatch_probes():
+    branches = []
+    for (event_name, native_id, compat_id, detail_format, detail_args) in X86_RAW_PATH_EVENTS:
+        branches.append(f'(($compat == 0 && $id == {native_id}) || ($compat == 1 && $id == {compat_id})) {{ printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\t{event_name}\\t{detail_format}\\n", nsecs, pid, tid, comm, {detail_args}); }}')
+    branches.append(f"(($compat == 0 && $id == {X86_RAW_CONNECT_IDS[0]}) || ($compat == 1 && $id == {X86_RAW_CONNECT_IDS[1]})) {{ {_bpftrace_connect_decode('args->args[1]', 'args->args[2]')} }}")
+    socketcall_branches = [f"($call == 3) {{ {_bpftrace_connect_decode('*uptr((uint32 *)($a + 4))', '*uptr((uint32 *)($a + 8))')} }}"] + [f'($call == {call}) {{ printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\t{event_name}\\t-\\n", nsecs, pid, tid, comm); }}' for (call, event_name) in I386_SOCKETCALL_EVENTS.items()]
+    branches.append(f"($compat == 1 && $id == 102) {{ $call = args->args[0]; $a = (uint64)args->args[1]; if {' else if '.join(socketcall_branches)} }}")
+    exit_branches = [f'($id == {syscall_id} && $ret {operator} 0) {{ printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\t{event_name}\\t{field}=%ld\\n", nsecs, pid, tid, comm, $ret); }}' for (syscall_id, event_name, field, operator) in I386_COMPAT_EXIT_EVENTS] + [f'($id == {syscall_id}) {{ printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\texec_return\\tsyscall={name} ret=%ld\\n", nsecs, pid, tid, comm, $ret); }}' for (syscall_id, name) in ((11, 'execve'), (358, 'execveat'))]
+    return [f"""tracepoint:raw_syscalls:sys_enter /@tracked[pid]/ {{ $compat = {X86_COMPAT_EXPR} ? 1 : 0; $id = args->id; printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\tsyscall\\tid=%d abi=%d\\n", nsecs, pid, tid, comm, $id, $compat); if {' else if '.join(branches)} }}""", f"tracepoint:raw_syscalls:sys_exit /@tracked[pid] && {X86_COMPAT_EXPR}/ {{ $id = args->id; $ret = args->ret; if {' else if '.join(exit_branches)} }}"]
+
+def ebpf_program(runner_pid):
+    if os.uname().machine == 'x86_64':
+        return _ebpf_program_x86_64(runner_pid)
+    return _ebpf_program_legacy(runner_pid)
+
+def _ebpf_lifecycle_probes(runner_pid):
+    return [f'tracepoint:sched:sched_process_fork /args->parent_pid == {runner_pid} || @tracked[args->parent_pid]/ {{ @tracked[args->child_pid] = 1; if (args->parent_pid != {runner_pid}) {{ printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\tfork\\t-\\n", nsecs, args->parent_pid, args->child_pid, comm); }} }}', 'tracepoint:sched:sched_process_exit /@tracked[pid]/ { $live = curtask->signal->live.counter; printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\texit\\tlive=%d\\n", nsecs, pid, tid, comm, $live); if (tid != pid) { delete(@tracked[tid]); } if ($live == 0) { delete(@tracked[pid]); } }', 'tracepoint:sched:sched_process_exec /@tracked[pid]/ { printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\texec_success\\told_pid=%d filename=%s\\n", nsecs, pid, tid, comm, args->old_pid, str(args->filename)); if (args->old_pid != pid) { delete(@tracked[args->old_pid]); } }', 'tracepoint:syscalls:sys_exit_execve /@tracked[pid]/ { printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\texec_return\\tsyscall=execve ret=%ld\\n", nsecs, pid, tid, comm, args->ret); }', 'tracepoint:syscalls:sys_exit_execveat /@tracked[pid]/ { printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\texec_return\\tsyscall=execveat ret=%ld\\n", nsecs, pid, tid, comm, args->ret); }']
+
+def _ebpf_native_exit_probes():
+    probes = ['tracepoint:syscalls:sys_exit_openat /@tracked[pid]/ { if (args->ret >= 0) { printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\topenat_success\\tfd=%ld\\n", nsecs, pid, tid, comm, args->ret); } }', 'tracepoint:syscalls:sys_exit_openat2 /@tracked[pid]/ { if (args->ret >= 0) { printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\topenat2_success\\tfd=%ld\\n", nsecs, pid, tid, comm, args->ret); } }']
+    for (syscall_name, event_name) in (('write', 'file_write_success'), ('pwrite64', 'file_pwrite64_success'), ('writev', 'file_writev_success')):
+        probes.append(f'tracepoint:syscalls:sys_exit_{syscall_name} /@tracked[pid]/ {{ if (args->ret > 0) {{ printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\t{event_name}\\tbytes=%ld\\n", nsecs, pid, tid, comm, args->ret); }} }}')
+    return probes
+
+def _ebpf_program_x86_64(runner_pid):
+    raw_events = {name for (name, *_) in X86_RAW_PATH_EVENTS} | {'connect'}
+    probes = _x86_raw_dispatch_probes()
+    for event_name in EBPF_SYSCALLS:
+        if event_name in raw_events:
+            continue
+        probes.append(f'tracepoint:syscalls:sys_enter_{event_name} /@tracked[pid]/ {{ printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\t{event_name}\\t-\\n", nsecs, pid, tid, comm); }}')
+    probes.extend(_ebpf_native_exit_probes())
+    probes.extend(_ebpf_lifecycle_probes(runner_pid))
+    return '\n'.join(probes)
+
+def _ebpf_program_legacy(runner_pid):
+    probes = ['tracepoint:raw_syscalls:sys_enter /@tracked[pid]/ { printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\tsyscall\\tid=%d\\n", nsecs, pid, tid, comm, args->id); }']
+    openat_syscall_ids = {'aarch64': (56,), 'armv7l': (322,), 'i386': (295,), 'i686': (295,)}.get(os.uname().machine)
+    if openat_syscall_ids:
+        openat_filter = ' || '.join((f'args->id == {syscall_id}' for syscall_id in openat_syscall_ids))
+        probes.append(f'tracepoint:raw_syscalls:sys_enter /@tracked[pid] && ({openat_filter})/ {{ printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\topenat\\tpath=%s flags=%lu\\n", nsecs, pid, tid, comm, str(uptr(args->args[1])), args->args[2]); }}')
+    for event_name in EBPF_SYSCALLS:
+        if event_name in {'execve', 'connect', 'openat', 'openat2', 'renameat', 'unlinkat'}:
+            continue
+        probes.append(f'tracepoint:syscalls:sys_enter_{event_name} /@tracked[pid]/ {{ printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\t{event_name}\\t-\\n", nsecs, pid, tid, comm); }}')
+    probes.append('tracepoint:syscalls:sys_enter_execve /@tracked[pid]/ { printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\texecve\\tpath=%s\\n", nsecs, pid, tid, comm, str(uptr(args->filename))); }')
+    if not openat_syscall_ids:
+        probes.append('tracepoint:syscalls:sys_enter_openat /@tracked[pid]/ { printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\topenat\\tpath=%s flags=%d\\n", nsecs, pid, tid, comm, str(uptr(args->filename)), args->flags); }')
+    probes.extend(('tracepoint:syscalls:sys_enter_renameat /@tracked[pid]/ { printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\trenameat\\tpath=%s dest=%s\\n", nsecs, pid, tid, comm, str(uptr(args->oldname)), str(uptr(args->newname))); }', 'tracepoint:syscalls:sys_enter_unlinkat /@tracked[pid]/ { printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\tunlinkat\\tpath=%s\\n", nsecs, pid, tid, comm, str(uptr(args->pathname))); }', 'tracepoint:syscalls:sys_enter_connect /@tracked[pid]/ { $sa = (uint64)args->uservaddr; $family = 0; if ($sa != 0 && args->addrlen >= 2) { $family = *uptr((uint16 *)$sa); } if ($sa != 0 && args->addrlen >= 16 && $family == 2) { $port = (*uptr((uint8 *)($sa + 2)) << 8) | *uptr((uint8 *)($sa + 3)); $address = (*uptr((uint8 *)($sa + 4)) << 24) | (*uptr((uint8 *)($sa + 5)) << 16) | (*uptr((uint8 *)($sa + 6)) << 8) | *uptr((uint8 *)($sa + 7)); printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\tconnect\\taddr=%u port=%u family=%u\\n", nsecs, pid, tid, comm, $address, $port, $family); } else { printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\tconnect\\taddr=0 port=0 family=%u\\n", nsecs, pid, tid, comm, $family); } }'))
+    probes.append('tracepoint:syscalls:sys_enter_openat2 /@tracked[pid]/ { printf("EBPF\\t%llu\\t%d\\t%d\\t%s\\topenat2\\tpath=%s\\n", nsecs, pid, tid, comm, str(uptr(args->filename))); }')
+    probes.extend(_ebpf_native_exit_probes())
+    probes.extend(_ebpf_lifecycle_probes(runner_pid))
+    return '\n'.join(probes)
+
+def named_vs_raw_syscall_totals(named_counts, raw_events):
+    """Per-syscall totals of named-probe events and ABI-mapped raw syscall entries."""
+    totals = defaultdict(lambda : {'named': 0, 'raw': 0})
+    for ((_, _, name), count) in named_counts.items():
+        totals[name]['named'] += count
+    for ((_, _, name), events) in raw_events.items():
+        totals[name]['raw'] += len(events)
+    return {name: totals[name] for name in sorted(totals)}
+
+def summarize_target_exec(exec_rows, syscall_rows, root_pid, expected_path, sample_started_ns):
+    """Report whether the sample root successfully exec'd the expected target and what followed."""
+
+    def offset_ms(row):
+        return round((int(row['timestamp_ns']) - sample_started_ns) / 1000000, 3)
+    rows = sorted(exec_rows, key=lambda row: int(row['timestamp_ns']))
+    (root_successes, root_failures, return_counts) = ([], [], Counter())
+    descendant_successes = 0
+    for row in rows:
+        if row['event'] == 'exec_success':
+            if int(row['pid']) != root_pid:
+                descendant_successes += 1
+                continue
+            root_successes.append({'offset_ms': offset_ms(row), 'comm': row['comm'], 'timestamp_ns': int(row['timestamp_ns']), 'filename': row['detail'].partition('filename=')[2]})
+        elif row['event'] == 'exec_return' and int(row['pid']) == root_pid:
+            fields = dict((part.split('=', 1) for part in row['detail'].split() if '=' in part))
+            try:
+                ret = int(fields.get('ret', ''))
+            except ValueError:
+                continue
+            return_counts[f"{fields.get('syscall', '?')}:{ret}"] += 1
+            if ret < 0:
+                root_failures.append({'offset_ms': offset_ms(row), 'syscall': fields.get('syscall'), 'errno': -ret})
+    (target, match) = (None, None)
+    for (mode, accept) in (('exact', lambda name: name == expected_path), ('basename', lambda name: os.path.basename(name) == os.path.basename(expected_path))):
+        target = next((item for item in root_successes if accept(item['filename'])), None)
+        if target is not None:
+            match = mode
+            break
+    after = target['timestamp_ns'] if target is not None else None
+    return {'status': 'observed' if target is not None else 'not_observed', 'expected_path': expected_path, 'match': match, 'offset_ms': target['offset_ms'] if target is not None else None, 'root_exec_successes': [{k: v for (k, v) in item.items() if k != 'timestamp_ns'} for item in root_successes[:16]], 'root_exec_success_count': len(root_successes), 'root_exec_failures': root_failures[:16], 'root_exec_failure_count': len(root_failures), 'root_exec_return_counts': dict(return_counts), 'descendant_exec_success_count': descendant_successes, 'post_target_root_raw_syscalls': None if after is None else sum((1 for row in syscall_rows if int(row['pid']) == root_pid and int(row['timestamp_ns']) > after)), 'post_target_lineage_raw_syscalls': None if after is None else sum((1 for row in syscall_rows if int(row['timestamp_ns']) > after))}
+
+class EbpfCollector:
+
+    def __init__(self, password_file, window_seconds=0.5, perf_rb_pages=DEFAULT_BPFTRACE_PERF_RB_PAGES):
+        self.password_file = Path(password_file)
+        self.perf_rb_pages = int(perf_rb_pages)
+        if self.perf_rb_pages < 1:
+            raise ValueError('bpftrace perf ring-buffer pages must be positive')
+        self.process = None
+        self.events = []
+        self.stderr_lines = []
+        self.lock = threading.Lock()
+        self.ready = threading.Event()
+        self.stdout_thread = None
+        self.stderr_thread = None
+        self.root_pid = None
+        self.syscall_abi_by_pid = {}
+        self.sample_started_ns = None
+        self.sample_ended_ns = None
+        self.window_ns = max(int(window_seconds * 1000000000), 1)
+        self.host_stats_by_window = defaultdict(dict)
+        self.syscall_event_rows = []
+        self.host_syscall_event_count = 0
+        self.event_diagnostics = {}
+        self.exec_event_rows = []
+        self.sudo_password = bytearray()
+
+    def _record_host_syscall(self, event):
+        if self.sample_started_ns is None:
+            return
+        timestamp_ns = event['timestamp_ns']
+        if timestamp_ns < self.sample_started_ns:
+            return
+        try:
+            syscall_id = int(event['detail'].partition('id=')[2])
+        except ValueError:
+            return
+        window_id = (timestamp_ns - self.sample_started_ns) // self.window_ns
+        stats = self.host_stats_by_window[window_id].setdefault(event['pid'], HostMonProcessStats())
+        stats.record_syscall(syscall_id)
+        self.host_syscall_event_count += 1
+
+    def _read_events(self):
+        for line in self.process.stdout:
+            event = self._parse_event_line(line)
+            if event is None:
+                continue
+            with self.lock:
+                self.events.append(event)
+
+    def _parse_event_line(self, line):
+        fields = line.rstrip('\n').split('\t', maxsplit=6)
+        if len(fields) != 7 or fields[0] != 'EBPF':
+            return None
+        try:
+            event = {'timestamp_ns': int(fields[1]), 'pid': int(fields[2]), 'tid': int(fields[3]), 'comm': fields[4], 'event': fields[5], 'detail': fields[6]}
+        except ValueError:
+            return None
+        if event['event'] == 'syscall' and ' abi=' in event['detail']:
+            (detail, _, abi_flag) = event['detail'].partition(' abi=')
+            event['detail'] = detail
+            event['syscall_abi'] = {'0': 'x86_64', '1': 'i386'}.get(abi_flag.strip())
+            return event
+        if event['event'] == 'fork':
+            parent_abi = self.syscall_abi_by_pid.get(event['pid'])
+            if parent_abi is None:
+                parent_abi = process_syscall_abi(event['pid'])
+            if parent_abi is not None:
+                self.syscall_abi_by_pid[event['tid']] = parent_abi
+        elif event['event'] == 'syscall':
+            abi = self.syscall_abi_by_pid.get(event['pid'])
+            if abi is None:
+                abi = process_syscall_abi(event['pid'])
+                if abi is not None:
+                    self.syscall_abi_by_pid[event['pid']] = abi
+            event['syscall_abi'] = abi
+            try:
+                syscall_id = int(event['detail'].partition('id=')[2])
+            except ValueError:
+                syscall_id = None
+            if abi is not None and syscall_id in EXEC_SYSCALL_IDS_BY_ABI[abi]:
+                self.syscall_abi_by_pid.pop(event['pid'], None)
+        return event
+
+    def _read_errors(self):
+        for line in self.process.stderr:
+            message = line.rstrip()
+            with self.lock:
+                self.stderr_lines.append(message)
+            lowered_message = message.lower()
+            if 'attached' in lowered_message and 'probe' in lowered_message:
+                self.ready.set()
+
+    def _sudo(self, command):
+        password = self.sudo_password.decode('utf-8')
+        return subprocess.run(['sudo', '-S', '-p', '', *command], input=password + '\n', text=True, capture_output=True, timeout=10, check=False)
+
+    def start(self):
+        try:
+            password = self.password_file.read_text(encoding='utf-8').rstrip('\r\n')
+        except OSError as error:
+            raise RuntimeError(f'Could not read eBPF sudo password file: {error}') from error
+        finally:
+            self.password_file.unlink(missing_ok=True)
+        if not password:
+            raise RuntimeError('The eBPF sudo password file was empty')
+        self.sudo_password = bytearray(password.encode('utf-8'))
+        try:
+            self.process = subprocess.Popen(build_bpftrace_command(self.perf_rb_pages, os.getpid()), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, start_new_session=True)
+            self.stdout_thread = threading.Thread(target=self._read_events, daemon=True)
+            self.stderr_thread = threading.Thread(target=self._read_errors, daemon=True)
+            self.stdout_thread.start()
+            self.stderr_thread.start()
+            self.process.stdin.write(password + '\n')
+            self.process.stdin.close()
+            del password
+            if not self.ready.wait(timeout=10):
+                with self.lock:
+                    details = '; '.join(self.stderr_lines[-4:])
+                raise RuntimeError(details or 'bpftrace did not attach its probes')
+            clear_result = subprocess.run(['sudo', '-K'], capture_output=True, text=True, timeout=5, check=False)
+            if clear_result.returncode:
+                raise RuntimeError('Could not clear sudo credentials before sample launch')
+        except Exception:
+            self.stop()
+            raise
+
+    def set_sample(self, root_pid, started_ns):
+        with self.lock:
+            self.root_pid = root_pid
+            self.sample_started_ns = started_ns
+            abi = process_syscall_abi(root_pid)
+            if abi is not None:
+                self.syscall_abi_by_pid[root_pid] = abi
+
+    def stop(self):
+        process = self.process
+        if process is not None and process.poll() is None:
+            try:
+                self._sudo(['/bin/kill', '-INT', str(process.pid)])
+                process.wait(timeout=10)
+            except (OSError, subprocess.SubprocessError):
+                try:
+                    self._sudo(['/bin/kill', '-KILL', str(process.pid)])
+                except (OSError, subprocess.SubprocessError):
+                    pass
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+        if self.stdout_thread is not None:
+            self.stdout_thread.join(timeout=5)
+        if self.stderr_thread is not None:
+            self.stderr_thread.join(timeout=5)
+        subprocess.run(['sudo', '-K'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+        for index in range(len(self.sudo_password)):
+            self.sudo_password[index] = 0
+        for index in range(len(self.sudo_password)):
+            self.sudo_password[index] = 0
+
+    def collect(self, window_seconds):
+        self.host_stats_by_window = defaultdict(dict)
+        self.host_syscall_event_count = 0
+        self.syscall_event_rows = []
+        self.exec_event_rows = []
+        counts_by_window = defaultdict(Counter)
+        threads_by_window = defaultdict(set)
+        events_by_window = defaultdict(list)
+        event_rows = []
+        parsed_counts = Counter()
+        before_sample_counts = Counter()
+        after_sample_counts = Counter()
+        untracked_counts = Counter()
+        accepted_counts = Counter()
+        raw_syscall_events = defaultdict(list)
+        named_syscall_counts = Counter()
+        raw_hostmon_action_counts = Counter()
+        named_hostmon_action_counts = Counter()
+        raw_syscall_fallbacks = Counter()
+        unresolved_abi_syscalls = 0
+        tracked_pids = {self.root_pid} if self.root_pid is not None else set()
+        tracked_tids = {self.root_pid} if self.root_pid is not None else set()
+        window_ns = max(int(window_seconds * 1000000000), 1)
+        with self.lock:
+            events = sorted(self.events, key=lambda event: event['timestamp_ns'])
+        for event in events:
+            event_name = event['event']
+            parsed_counts[event_name] += 1
+            timestamp_ns = event['timestamp_ns']
+            if self.sample_started_ns is None or timestamp_ns < self.sample_started_ns:
+                before_sample_counts[event_name] += 1
+                continue
+            if self.sample_ended_ns is not None and timestamp_ns >= self.sample_ended_ns:
+                after_sample_counts[event_name] += 1
+                continue
+            window_id = (timestamp_ns - self.sample_started_ns) // window_ns
+            if event_name == 'fork':
+                if event['pid'] not in tracked_pids and event['pid'] not in tracked_tids:
+                    untracked_counts[event_name] += 1
+                    continue
+                tracked_pids.add(event['tid'])
+                tracked_tids.add(event['tid'])
+            elif event['pid'] not in tracked_pids and event['tid'] not in tracked_tids:
+                untracked_counts[event_name] += 1
+                continue
+            accepted_counts[event_name] += 1
+            if event_name in EXEC_OBSERVATION_EVENTS:
+                self.exec_event_rows.append({**event, 'window_id': window_id})
+                continue
+            if event_name == 'syscall':
+                self._record_host_syscall(event)
+                try:
+                    syscall_id = int(event['detail'].partition('id=')[2])
+                except ValueError:
+                    syscall_id = None
+                if event.get('syscall_abi') is None:
+                    unresolved_abi_syscalls += 1
+                syscall_name = syscall_name_for_id(event.get('syscall_abi'), syscall_id)
+                if syscall_name is not None:
+                    syscall_key = (window_id, event['pid'], syscall_name)
+                    raw_syscall_events[syscall_key].append(event)
+                    hostmon_action = HOSTMON_ACTION_EVENT_MAP.get(syscall_name)
+                    if hostmon_action:
+                        raw_hostmon_action_counts[window_id, event['pid'], hostmon_action] += 1
+                raw_event = {key: value for (key, value) in event.items() if key != 'syscall_abi'}
+                self.syscall_event_rows.append({**raw_event, 'window_id': window_id})
+                continue
+            events_by_window[window_id].append(event)
+            if event_name in EBPF_SYSCALLS:
+                named_syscall_counts[window_id, event['pid'], event_name] += 1
+            field = f'ebpf_{event_name}_count'
+            counts_by_window[window_id][field] += 1
+            counts_by_window[window_id]['ebpf_event_count'] += 1
+            if event_name in EBPF_WRITE_EVENT_NAMES:
+                try:
+                    counts_by_window[window_id]['ebpf_file_write_bytes'] += int(event['detail'].rsplit('bytes=', 1)[1])
+                except (IndexError, ValueError):
+                    pass
+            threads_by_window[window_id].add(event['tid'])
+            hostmon_action = HOSTMON_ACTION_EVENT_MAP.get(event_name)
+            if hostmon_action:
+                named_hostmon_action_counts[window_id, event['pid'], hostmon_action] += 1
+                hostmon_stats = self.host_stats_by_window[window_id].setdefault(event['pid'], HostMonProcessStats())
+                if hostmon_action == 'connect':
+                    details = event['detail'].split()
+                    address = next((part[5:] for part in details if part.startswith('addr=')), '0')
+                    port = next((part[5:] for part in details if part.startswith('port=')), '0')
+                    try:
+                        hostmon_stats.record_activity(hostmon_action, int(address), int(port))
+                    except ValueError:
+                        hostmon_stats.record_activity(hostmon_action)
+                elif hostmon_path_is_interesting(hostmon_event_path(event['detail'])):
+                    hostmon_stats.record_activity(hostmon_action)
+            event_rows.append({'timestamp_ns': timestamp_ns, 'window_id': window_id, 'pid': event['pid'], 'tid': event['tid'], 'comm': event['comm'], 'event': event_name, 'detail': event['detail']})
+            if event_name == 'exit':
+                tracked_tids.discard(event['tid'])
+                live = event['detail'].partition('live=')[2]
+                if not live:
+                    tracked_pids.discard(event['tid'])
+                elif live == '0':
+                    tracked_pids.discard(event['pid'])
+                    tracked_pids.discard(event['tid'])
+                elif event['tid'] != event['pid']:
+                    tracked_pids.discard(event['tid'])
+        for ((window_id, pid, syscall_name), raw_events) in raw_syscall_events.items():
+            missing_named_events = max(len(raw_events) - named_syscall_counts[window_id, pid, syscall_name], 0)
+            if not missing_named_events:
+                continue
+            counts_by_window[window_id][f'ebpf_{syscall_name}_count'] += missing_named_events
+            raw_syscall_fallbacks[syscall_name] += missing_named_events
+            events_by_window[window_id].extend(({'timestamp_ns': raw_event['timestamp_ns'], 'window_id': window_id, 'pid': pid, 'tid': raw_event['tid'], 'comm': raw_event['comm'], 'event': syscall_name, 'detail': raw_event['detail']} for raw_event in raw_events[:missing_named_events]))
+        for ((window_id, pid, action), raw_count) in raw_hostmon_action_counts.items():
+            missing_actions = max(raw_count - named_hostmon_action_counts[window_id, pid, action], 0)
+            if not missing_actions:
+                continue
+            process_stats = self.host_stats_by_window[window_id].setdefault(pid, HostMonProcessStats())
+            for _ in range(missing_actions):
+                process_stats.record_activity(action)
+        self.event_diagnostics = {'parsed': dict(parsed_counts), 'before_sample': dict(before_sample_counts), 'after_sample': dict(after_sample_counts), 'untracked_tid': dict(untracked_counts), 'accepted': dict(accepted_counts), 'host_syscall_events': self.host_syscall_event_count, 'raw_syscall_feature_fallbacks': dict(raw_syscall_fallbacks), 'raw_syscalls_unresolved_abi': unresolved_abi_syscalls, 'named_vs_raw_syscalls': named_vs_raw_syscall_totals(named_syscall_counts, raw_syscall_events)}
+        for (window_id, threads) in threads_by_window.items():
+            counts_by_window[window_id]['ebpf_unique_threads'] = len(threads)
+        for (window_id, process_stats) in self.host_stats_by_window.items():
+            counts_by_window[window_id].update(summarize_hostmon_window(process_stats))
+        for (window_id, window_events) in events_by_window.items():
+            counts_by_window[window_id].update(summarize_host_event_window(window_events))
+        return (counts_by_window, event_rows)
+
+    def write_log(self, path):
+        with self.lock:
+            lines = list(self.stderr_lines)
+        Path(path).write_text('\n'.join(lines) + ('\n' if lines else ''), encoding='utf-8')
+
+    def lost_event_count(self):
+        with self.lock:
+            lines = list(self.stderr_lines)
+        return parse_bpftrace_lost_event_count(lines)
+
+def process_snapshot():
+    pids = set()
+    for process in psutil.process_iter(['pid']):
+        try:
+            pids.add(process.info['pid'])
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return pids
+
+def system_snapshot():
+    net = psutil.net_io_counters()
+    disk = psutil.disk_io_counters()
+    return {'cpu_percent': psutil.cpu_percent(interval=None), 'memory_percent': psutil.virtual_memory().percent, 'net_bytes_sent': net.bytes_sent, 'net_bytes_recv': net.bytes_recv, 'net_packets_sent': net.packets_sent, 'net_packets_recv': net.packets_recv, 'disk_read_bytes': disk.read_bytes if disk else 0, 'disk_write_bytes': disk.write_bytes if disk else 0, 'pids': process_snapshot()}
+
+def delta(current, previous, key):
+    return max(0, current[key] - previous[key])
+
+def build_row(run_id, label, window_id, start_ts, end_ts, current, previous, file_events, packet_features):
+    duration = max(end_ts - start_ts, 0.0)
+    rate_duration = max(duration, 0.001)
+    row = {'run_id': run_id, 'label': label, 'window_id': window_id, 'window_start_utc': datetime.fromtimestamp(start_ts, timezone.utc).isoformat(), 'window_end_utc': datetime.fromtimestamp(end_ts, timezone.utc).isoformat(), 'window_seconds': duration, 'host_cpu_percent': current['cpu_percent'], 'host_memory_percent': current['memory_percent'], 'host_process_count': len(current['pids']), 'host_new_pid_count': len(current['pids'] - previous['pids']), 'host_ended_pid_count': len(previous['pids'] - current['pids']), 'net_bytes_sent': delta(current, previous, 'net_bytes_sent'), 'net_bytes_recv': delta(current, previous, 'net_bytes_recv'), 'net_packets_sent': delta(current, previous, 'net_packets_sent'), 'net_packets_recv': delta(current, previous, 'net_packets_recv'), 'disk_read_bytes': delta(current, previous, 'disk_read_bytes'), 'disk_write_bytes': delta(current, previous, 'disk_write_bytes'), 'net_bytes_per_second': (delta(current, previous, 'net_bytes_sent') + delta(current, previous, 'net_bytes_recv')) / rate_duration, 'net_packets_per_second': (delta(current, previous, 'net_packets_sent') + delta(current, previous, 'net_packets_recv')) / rate_duration}
+    row.update(file_events)
+    row.update(packet_features)
+    return row
+
+def main():
+    args = parse_args()
+    attribution = integrated_liveness.Session(args)
+    try:
+        if args.print_feature_schema:
+            feature_groups = telemetry_feature_groups()
+            print(json.dumps({'schema_version': TELEMETRY_SCHEMA_VERSION, 'runner_sha256': malware_runner_sha256(), 'feature_groups': feature_groups, 'feature_count': sum(map(len, feature_groups.values()))}, sort_keys=True))
+            return 0
+        if not args.sample:
+            raise SystemExit('A sample is required unless --print-feature-schema is used.')
+        if not args.allow_execution:
+            raise SystemExit('Refusing to execute a sample without --allow-execution. Use this only inside the isolated Linux VM.')
+        if not math.isfinite(args.timeout) or args.timeout <= 0:
+            raise ValueError('--timeout must be greater than zero')
+        if not math.isfinite(args.window_sec) or args.window_sec <= 0:
+            raise ValueError('--window-sec must be greater than zero')
+        sample = resolve_sample(args.sample, args.samples_dir)
+        sample_arguments = []
+        if args.sample_args_file:
+            sample_arguments = json.loads(Path(args.sample_args_file).read_text(encoding='utf-8'))
+            if not isinstance(sample_arguments, list) or not all((isinstance(value, str) for value in sample_arguments)):
+                raise ValueError('Sample arguments must be a JSON list of strings')
+        run_id = datetime.now(timezone.utc).strftime('run_%Y%m%dT%H%M%SZ')
+        run_dir = Path(args.output_dir).expanduser().resolve() / f'{run_id}_{sample.stem}'
+        run_dir.mkdir(parents=True, exist_ok=False)
+        telemetry_path = run_dir / 'telemetry.csv'
+        ebpf_events_path = run_dir / 'ebpf_events.csv'
+        ebpf_log_path = run_dir / 'ebpf_collector.log'
+        packet_capture_log_path = run_dir / 'packet_capture.log'
+        packet_capture_staging_path = Path('/tmp') / f'.malware-pcap-{uuid.uuid4().hex}.pcap' if args.iface else None
+        collector_log_path = run_dir / 'collector.log'
+        stdout_path = run_dir / 'sample.stdout.log'
+        stderr_path = run_dir / 'sample.stderr.log'
+        metadata_path = run_dir / 'run.json'
+        sample_workspace = run_dir / 'workspace'
+        sample_workspace.mkdir()
+        label = args.label or sample.name
+        metadata = {'run_id': run_id, 'sample': str(sample), 'sample_name': sample.name, 'sample_artifact_type': classify_sample_artifact(sample), 'target_artifact': describe_target_artifact(sample), 'sample_arguments': sample_arguments, 'started_at_utc': datetime.now(timezone.utc).isoformat(), 'timeout_seconds': args.timeout, 'window_seconds': args.window_sec, 'observation_mode': 'fixed' if args.fixed_observation else 'until_root_exit', 'common_launch_wrapper': args.common_launch_wrapper, 'interface': args.iface, 'bpf': args.bpf, 'packet_capture_enabled': args.iface is not None, 'packet_capture_buffer_kb_requested': args.packet_capture_buffer_kb if args.iface else None, 'packet_capture_drain_ms': args.packet_capture_drain_ms if args.iface else None, 'packet_capture_immediate_mode': bool(args.iface), 'bpftrace_perf_rb_pages': args.bpftrace_perf_rb_pages if args.ebpf_password_file else None, 'packet_capture_status': 'pending' if args.iface else 'disabled', 'p4_network_feature_source': 'packet_capture_reconstruction' if args.iface else 'disabled', 'p4_network_active_ttl_windows': 3 if args.iface else 0, 'ebpf_enabled': args.ebpf_password_file is not None, 'ebpf_status': 'pending' if args.ebpf_password_file else 'disabled', 'status': 'starting'}
+        file_state = FileEventState()
+        observer = Observer()
+        observer.schedule(FileEventHandler(file_state), str(sample_workspace), recursive=True)
+        watched_paths = [str(sample_workspace)]
+        for extra in args.watch_path or []:
+            extra_path = Path(extra).expanduser()
+            if not extra_path.is_dir():
+                collector_log_note = f'watch_path_skipped_missing={extra_path}'
+                metadata.setdefault('watch_path_warnings', []).append(collector_log_note)
+                continue
+            resolved = str(extra_path.resolve())
+            if resolved in watched_paths:
+                continue
+            observer.schedule(FileEventHandler(file_state), resolved, recursive=True)
+            watched_paths.append(resolved)
+        metadata['filesystem_watch_paths'] = watched_paths
+        observer.start()
+        packet_collector = PacketCollector(args.iface, args.bpf, args.packet_capture_password_file, packet_capture_staging_path, args.window_sec, args.packet_capture_buffer_kb, args.packet_capture_drain_ms) if args.iface else None
+        ebpf_collector = None
+        ebpf_status = 'disabled'
+        ebpf_error = None
+        sample_process = None
+        sample_started_wall = None
+        previous = system_snapshot()
+        previous_monotonic = time.monotonic()
+        previous_wall = time.time()
+        window_id = 0
+        rows = []
+        timed_out = False
+        with collector_log_path.open('w', encoding='utf-8') as collector_log, stdout_path.open('w', encoding='utf-8') as stdout_log, stderr_path.open('w', encoding='utf-8') as stderr_log:
+            try:
+                collector_log.write(f'run_id={run_id}\n')
+                collector_log.write(f'sample={sample}\n')
+                collector_log.write(f'timeout={args.timeout}\n')
+                collector_log.flush()
+                packet_features = {'net_packets_captured': 0, 'net_bytes_captured': 0, 'net_flow_count': 0, **P4_NETWORK_ZERO, **NETWORK_EXTRA_ZERO} if packet_collector is None else None
+                if packet_collector is not None:
+                    packet_collector.start()
+                    metadata['packet_capture_status'] = 'active'
+                    metadata['packet_capture_rmem_max_before'] = packet_collector.original_rmem_max
+                    metadata['packet_capture_rmem_max_during_capture'] = packet_collector.rmem_max_during_capture
+                if args.ebpf_password_file:
+                    ebpf_status = 'unavailable'
+                    try:
+                        ebpf_collector = EbpfCollector(args.ebpf_password_file, args.window_sec, args.bpftrace_perf_rb_pages)
+                        ebpf_collector.start()
+                        ebpf_status = 'active'
+                    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+                        ebpf_error = f'{type(error).__name__}: {error}'
+                    metadata['ebpf_status'] = ebpf_status
+                    if ebpf_error:
+                        metadata['ebpf_error'] = ebpf_error
+                    collector_log.write(f'ebpf_status={ebpf_status}\n')
+                    if ebpf_error:
+                        collector_log.write(f'ebpf_error={ebpf_error}\n')
+                    collector_log.flush()
+                    if ebpf_error:
+                        raise RuntimeError(f'Required eBPF collector failed to start; refusing to run sample: {ebpf_error}')
+                previous = system_snapshot()
+                attribution.capture_context(packet_collector)
+                attribution.prepare(run_dir, sample)
+                sample_started_ns = time.monotonic_ns()
+                sample_started_wall = time.time()
+                previous_monotonic = sample_started_ns / 1000000000
+                previous_wall = sample_started_wall
+                if packet_collector is not None:
+                    packet_collector.set_sample_start(sample_started_wall)
+                metadata['sample_started_at_utc'] = datetime.fromtimestamp(sample_started_wall, timezone.utc).isoformat()
+                command = [str(sample), *sample_arguments]
+                if args.common_launch_wrapper:
+                    command = ['/bin/bash', '-c', 'exec "$@"', 'sample-launch', *command]
+                command = attribution.wrap(command)
+                sample_process = subprocess.Popen(command, cwd=sample_workspace, stdin=subprocess.DEVNULL, stdout=stdout_log, stderr=stderr_log, start_new_session=True)
+                attribution.release(sample_process)
+                if ebpf_collector is not None and ebpf_status == 'active':
+                    ebpf_collector.set_sample(sample_process.pid, sample_started_ns)
+                metadata['sample_root_pid'] = sample_process.pid
+                metadata['sample_started_monotonic_ns'] = sample_started_ns
+                started = sample_started_ns / 1000000000
+                deadline = started + args.timeout
+                while True:
+                    next_boundary = min(deadline, started + (window_id + 1) * args.window_sec)
+                    remaining = next_boundary - time.monotonic()
+                    if sample_process.poll() is None and remaining > 0:
+                        try:
+                            sample_process.wait(timeout=remaining)
+                        except subprocess.TimeoutExpired:
+                            pass
+                    if args.fixed_observation:
+                        threading.Event().wait(max(0.0, next_boundary - time.monotonic()))
+                    ended_monotonic = time.monotonic()
+                    ended_wall = previous_wall + (ended_monotonic - previous_monotonic)
+                    current = system_snapshot()
+                    if packet_collector is not None:
+                        packet_features = packet_collector.snapshot_and_reset(window_id)
+                    file_features = file_state.snapshot_and_reset()
+                    rows.append(build_row(run_id, label, window_id, previous_wall, ended_wall, current, previous, file_features, packet_features))
+                    collector_log.write(f"window={window_id} file_events={file_features['host_file_events_total']} new_pids={rows[-1]['host_new_pid_count']} net_bytes={rows[-1]['net_bytes_sent'] + rows[-1]['net_bytes_recv']}\n")
+                    collector_log.flush()
+                    previous = current
+                    previous_monotonic = ended_monotonic
+                    previous_wall = ended_wall
+                    window_id += 1
+                    if sample_process.poll() is not None and (not args.fixed_observation):
+                        break
+                    if ended_monotonic >= deadline:
+                        timed_out = sample_process.poll() is None
+                        stop_process_group(sample_process)
+                        break
+                metadata['return_code'] = sample_process.returncode
+            finally:
+                observation_ended_ns = time.monotonic_ns()
+                attribution.observation_end(observation_ended_ns, sample_started_ns)
+                if args.fixed_observation and sample_process is not None:
+                    observation_ended_ns = min(observation_ended_ns, sample_started_ns + int(args.timeout * 1000000000))
+                metadata['observation_ended_monotonic_ns'] = observation_ended_ns
+                if ebpf_collector is not None:
+                    ebpf_collector.sample_ended_ns = observation_ended_ns
+                try:
+                    if sample_process is not None:
+                        stop_process_group(sample_process)
+                finally:
+                    try:
+                        if ebpf_collector is not None:
+                            ebpf_collector.stop()
+                    finally:
+                        try:
+                            if packet_collector is not None:
+                                packet_collector.stop()
+                        finally:
+                            observer.stop()
+                            observer.join()
+                            attribution.stop()
+        if ebpf_collector is not None:
+            ebpf_collector.write_log(ebpf_log_path)
+            (ebpf_counts, ebpf_event_rows) = ebpf_collector.collect(args.window_sec)
+            metadata['ebpf_event_diagnostics'] = ebpf_collector.event_diagnostics
+            metadata['ebpf_lost_event_count'] = ebpf_collector.lost_event_count()
+            if ebpf_status == 'active':
+                metadata['target_exec'] = summarize_target_exec(ebpf_collector.exec_event_rows, ebpf_collector.syscall_event_rows, sample_process.pid, str(sample), sample_started_ns)
+            else:
+                metadata['target_exec'] = {'status': 'ebpf_inactive'}
+        else:
+            (ebpf_counts, ebpf_event_rows) = ({}, [])
+        packet_capture_stats = {'packets_captured': None, 'packets_received_by_filter': None, 'dropped_by_kernel': None}
+        if packet_collector is not None:
+            if packet_collector.uses_pcap:
+                packet_collector.write_log(packet_capture_log_path)
+                packet_capture_stats = packet_collector.capture_stats()
+                try:
+                    packet_collector.publish_pcap(run_dir / 'packet_capture.pcap')
+                except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+                    metadata['packet_capture_publish_error'] = f'{type(error).__name__}: {error}'
+                packet_counts = packet_collector.collect_by_window(sample_started_wall, args.window_sec, len(rows))
+                for row in rows:
+                    row.update(packet_counts.get(row['window_id'], {'net_packets_captured': 0, 'net_bytes_captured': 0, 'net_flow_count': 0, **P4_NETWORK_ZERO, **NETWORK_EXTRA_ZERO}))
+            metadata['packet_capture_statistics'] = packet_capture_stats
+            metadata['packet_capture_dropped_by_kernel'] = packet_capture_stats['dropped_by_kernel']
+            packet_counts = (packet_capture_stats['packets_received_by_filter'], packet_capture_stats['packets_captured'], packet_capture_stats['dropped_by_kernel'])
+            metadata['packet_capture_counter_discrepancy'] = packet_counts[0] - packet_counts[1] - packet_counts[2] if all((value is not None for value in packet_counts)) else None
+            metadata['packet_capture_rmem_max_before'] = packet_collector.original_rmem_max
+            metadata['packet_capture_rmem_max_during_capture'] = packet_collector.rmem_max_during_capture
+            metadata['packet_capture_rmem_max_after_capture'] = packet_collector.effective_rmem_max
+            metadata['packet_capture_interface_counters_before_sample'] = packet_collector.interface_counters_before_sample
+            metadata['packet_capture_interface_counters_after_capture'] = packet_collector.interface_counters_after_capture
+            metadata['packet_capture_interface_counter_deltas'] = packet_collector.interface_counter_deltas
+            metadata['packet_capture_interface_link_state_before_sample'] = packet_collector.interface_link_state_before_sample
+            if packet_collector.uses_pcap:
+                pcap_file = inspect_pcap_file(run_dir / 'packet_capture.pcap')
+                captured_count = packet_capture_stats['packets_captured']
+                pcap_file['record_count_minus_tcpdump_captured'] = pcap_file['record_count'] - captured_count if isinstance(pcap_file['record_count'], int) and isinstance(captured_count, int) else None
+                capture_diagnostics = {'interface': packet_collector.interface, 'buffer_size_kb': packet_collector.buffer_size_kb, 'drain_ms': packet_collector.drain_ms, 'immediate_mode': True, 'process_id': packet_collector.process.pid if packet_collector.process else None, 'process_return_code': getattr(packet_collector.process, 'returncode', None) if packet_collector.process else None, 'lifecycle_events': packet_collector.lifecycle_events, 'stderr_events': packet_collector.stderr_events, 'interface_counters_before_sample': packet_collector.interface_counters_before_sample, 'interface_link_state_before_sample': packet_collector.interface_link_state_before_sample, 'interface_counters_after_drain': packet_collector.interface_counters_after_drain, 'interface_counters_after_capture': packet_collector.interface_counters_after_capture, 'interface_counter_delta_after_drain': interface_counter_delta(packet_collector.interface_counters_before_sample, packet_collector.interface_counters_after_drain), 'interface_counter_delta_after_capture': packet_collector.interface_counter_deltas, 'pcap_file': pcap_file}
+                metadata['packet_capture_diagnostics'] = capture_diagnostics
+                (run_dir / 'packet_capture_diagnostics.json').write_text(json.dumps(capture_diagnostics, indent=2) + '\n', encoding='utf-8')
+            if packet_collector.buffer_restore_error:
+                metadata['packet_capture_buffer_restore_error'] = packet_collector.buffer_restore_error
+        metadata['ebpf_status'] = ebpf_status
+        metadata['ebpf_error'] = ebpf_error
+        metadata['ebpf_event_count'] = len(ebpf_event_rows)
+        metadata['raw_syscall_event_count'] = len(ebpf_collector.syscall_event_rows) if ebpf_collector is not None else 0
+        (quality_status, quality_reasons) = assess_collection_quality(args.iface is not None, metadata['packet_capture_status'], metadata.get('packet_capture_dropped_by_kernel'), args.ebpf_password_file is not None, ebpf_status, metadata.get('ebpf_lost_event_count'), metadata.get('packet_capture_buffer_restore_error'), packet_capture_stats, metadata.get('packet_capture_interface_counter_deltas'), metadata.get('packet_capture_interface_link_state_before_sample'))
+        (quality_status, quality_reasons) = attribution.quality(metadata, quality_status, quality_reasons)
+        metadata['collection_quality_status'] = quality_status
+        metadata['collection_quality_reasons'] = quality_reasons
+        for row in rows:
+            window_features = ebpf_counts.get(row['window_id'], {})
+            row['ebpf_status'] = ebpf_status
+            row['ebpf_event_count'] = window_features.get('ebpf_event_count', 0)
+            row['ebpf_unique_threads'] = window_features.get('ebpf_unique_threads', 0)
+            for field in EBPF_COUNTER_FIELDS:
+                row[field] = window_features.get(field, 0)
+            for field in EBPF_VALUE_FIELDS:
+                row[field] = window_features.get(field, 0)
+            for field in HOSTMON_FEATURE_FIELDS:
+                row[field] = window_features.get(field, 0)
+            for field in HOST_EVENT_FEATURE_FIELDS:
+                row[field] = window_features.get(field, 0)
+            row['collection_quality_status'] = quality_status
+            row['collection_quality_reasons'] = ';'.join(quality_reasons)
+            ensure_telemetry_feature_schema(row)
+        metadata['telemetry_schema_version'] = TELEMETRY_SCHEMA_VERSION
+        metadata['malware_runner_sha256'] = malware_runner_sha256()
+        metadata['telemetry_fields'] = list(rows[0]) if rows else []
+        metadata['telemetry_feature_groups'] = telemetry_feature_groups()
+        if args.ebpf_password_file:
+            with ebpf_events_path.open('w', newline='', encoding='utf-8') as event_file:
+                fieldnames = ['timestamp_ns', 'window_id', 'pid', 'tid', 'comm', 'event', 'detail']
+                writer = csv.DictWriter(event_file, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(ebpf_event_rows)
+            with (run_dir / 'syscall_events.csv').open('w', newline='', encoding='utf-8') as syscall_file:
+                writer = csv.DictWriter(syscall_file, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(ebpf_collector.syscall_event_rows if ebpf_collector is not None else [])
+            with (run_dir / 'exec_events.csv').open('w', newline='', encoding='utf-8') as exec_file:
+                writer = csv.DictWriter(exec_file, fieldnames=fieldnames, extrasaction='ignore')
+                writer.writeheader()
+                writer.writerows(ebpf_collector.exec_event_rows if ebpf_collector is not None else [])
+        (metadata['status'], metadata['failure_reason']) = classify_sample_exit(sample_process.returncode, timed_out, args.timeout, stdout_path, stderr_path)
+        if rows:
+            with telemetry_path.open('w', newline='', encoding='utf-8') as telemetry_file:
+                writer = csv.DictWriter(telemetry_file, fieldnames=list(rows[0]))
+                writer.writeheader()
+                writer.writerows(rows)
+        else:
+            raise RuntimeError('No telemetry window was collected for the sample.')
+        metadata['windows'] = len(rows)
+        metadata['collector_return_code'] = 0
+        metadata['finished_at_utc'] = datetime.now(timezone.utc).isoformat()
+        metadata_path.write_text(json.dumps(metadata, indent=2) + '\n', encoding='utf-8')
+        print(f'Run directory: {run_dir}')
+        print(f"Status: {metadata['status']}")
+        print(f'Telemetry: {telemetry_path}')
+        print(f'Stdout: {stdout_path}')
+        print(f'Stderr: {stderr_path}')
+        print(f'Metadata: {metadata_path}')
+    finally:
+        attribution.stop()
+if __name__ == '__main__':
+    main()
