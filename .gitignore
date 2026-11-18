@@ -134,3 +134,16 @@ data/versioned-collector/additional-study-review-20261022/additional-benign-work
 # Offline analysis runs of the external datasets (no VM data): reports only.
 !data/versioned-collector/additional-study-review-20261022/iot23-external/runs/
 !data/versioned-collector/additional-study-review-20261022/lidds-external/runs/
+# Third-party trees fetched for the committee analyses (Go module caches, downloaded toolchains),
+# and the attack-tool build preparation that was stopped (2026-11-15).
+data/versioned-collector/**/gopath/
+data/versioned-collector/**/.gopath/
+data/versioned-collector/**/toolchains/
+data/versioned-collector/additional-study-review-20261022/tools21-build/
+data/versioned-collector/**/baselines/vendor/*/
+data/versioned-collector/**/pc1-part3-check-20261111/sklearn-*/
+# Our own Go program of the encrypted-traffic collection (the labtransport client and server); its
+# module cache and the built binary stay local.
+!data/versioned-collector/additional-study-review-20261022/transport21/src/main.go
+!data/versioned-collector/additional-study-review-20261022/transport21/src/go.mod
+!data/versioned-collector/additional-study-review-20261022/transport21/src/go.sum

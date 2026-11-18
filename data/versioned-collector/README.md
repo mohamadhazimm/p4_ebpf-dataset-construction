@@ -1,4 +1,4 @@
-# Versioned-collector experiments (2026-10-17 to 2026-11-08)
+# Versioned-collector experiments (2026-10-17 to 2026-11-17)
 
 Every collection, check and offline analysis since the versioned collector was introduced has its own
 folder here. Folders are named `<what>-<date or UTC timestamp>`; attempt subfolders are
@@ -8,7 +8,8 @@ moved between folders: this index is how the work is organised.
 
 ## What is in Git and what stays local
 
-Only our own source code (`.py`, `.sh`, `.c`, `.h`) and Markdown notes and reports are published (see
+Only our own source code (`.py`, `.sh`, `.c`, `.h`, and the one Go program in
+`additional-study-review-20261022/transport21/src/`) and Markdown notes and reports are published (see
 the `versioned-collector` block in the repository `.gitignore`). These stay on the collection machine:
 
 - malware samples and archives, packet captures, per-run telemetry and VM run outputs;
@@ -85,7 +86,7 @@ entries below give the title of the ledger section that describes each folder.
 | `tls-smoke-20261019` | Ledger: *Bash Dataset Retrieval Check, 2026-10-19* | 0 |
 | [`zero-feature-trigger-20261019`](zero-feature-trigger-20261019/) | Ledger: *Benign Zero-Feature Trigger Probe, 2026-10-19*; docs: [README.md](zero-feature-trigger-20261019/README.md) | 4 |
 
-## Study review, revision 5, external datasets and observation length (2026-10-22 to 2026-11-08)
+## Study review, revision 5, external datasets, observation length, committee analyses and the session lab (2026-10-22 to 2026-11-17)
 
 All under [`additional-study-review-20261022/`](additional-study-review-20261022/). Its top level holds
 the drivers and analysis scripts; each subfolder holds the attempts of one experiment.
@@ -125,16 +126,18 @@ the drivers and analysis scripts; each subfolder holds the attempts of one exper
 | [`additional-study-review-20261022/combined-analysis`](additional-study-review-20261022/combined-analysis/) | Ledger: *Joint X64 And I386 Compatibility And Training, 2026-10-22* | 4 |
 | [`additional-study-review-20261022/combined-surface-expanded`](additional-study-review-20261022/combined-surface-expanded/) | Ledger: *Paper Switched To Expanded Combined-Surface Pool, 2026-10-27* | 1 |
 | [`additional-study-review-20261022/combined-surface-repeated-cv`](additional-study-review-20261022/combined-surface-repeated-cv/) | Ledger: *Combined-Surface Repeated Grouped CV (10 Fold Seeds), 2026-10-27* | 1 |
+| [`additional-study-review-20261022/committee-eval-20261113`](additional-study-review-20261022/committee-eval-20261113/) | Ledger: *Committee Response: Rigor, Attribution, Switch Gap, Datasheet (Offline), 2026-11-13* and its follow-ups to 2026-11-17; docs: [REPORT.md](additional-study-review-20261022/committee-eval-20261113/REPORT.md), [baselines/README.md](additional-study-review-20261022/committee-eval-20261113/baselines/README.md), [datasheet/DATASHEET.md](additional-study-review-20261022/committee-eval-20261113/datasheet/DATASHEET.md) | 80 |
 | `additional-study-review-20261022/current-release-assessments` | Ledger: *Additional Benign Guest Gate And Sixteen-Unit Assessment, 2026-10-23* | 0 |
 | [`additional-study-review-20261022/deployment-design-20261107`](additional-study-review-20261022/deployment-design-20261107/) | Ledger: *5-Min Benign Validation Gap (top/lowrate Never Ran) + Timing Control + Bursty/Short Benign Collection, 2026-11-07* | 2 |
 | `additional-study-review-20261022/evasive-viability` | Ledger: *Host-Evasive Class Deepened (Rekoobe/BPFDoor) + Second Viability Probe, 2026-10-25* | 0 |
 | [`additional-study-review-20261022/exec-identity-readiness`](additional-study-review-20261022/exec-identity-readiness/) | Ledger: *Exec-Inode Attestation Gate Prepared, 2026-10-23* | 3 |
+| [`additional-study-review-20261022/extension-audit-20261112`](additional-study-review-20261022/extension-audit-20261112/) | Ledger: *Full Audit Of The 68 Extra .21 Runs, 2026-11-12* | 1 |
 | `additional-study-review-20261022/flood21-collect` | Ledger: *Observation-Length Check For The Advisor's Multi-Minute Request, 2026-11-05* | 0 |
 | `additional-study-review-20261022/gafgyt-observe` | Ledger: *Bot-Flooding Route Phase 1 + Phase 2: Gafgyt/Kaiten C2 Handshake Captured (no attack), 2026-10-25* | 0 |
 | [`additional-study-review-20261022/gafgyt-phase2`](additional-study-review-20261022/gafgyt-phase2/) | Ledger: *Bot-Flooding Route Phase 1 + Phase 2: Gafgyt/Kaiten C2 Handshake Captured (no attack), 2026-10-25* | 2 |
 | [`additional-study-review-20261022/gafgyt-phase3`](additional-study-review-20261022/gafgyt-phase3/) | Ledger: *Bot-Flooding Phase 3: Commanded Flood Blocked At ircd-Emulation; Autonomous SYN-Flood Captured, 2026-10-25* | 8 |
 | [`additional-study-review-20261022/historical-run-audit`](additional-study-review-20261022/historical-run-audit/) | Ledger: *Historical Run Audit Of All 7,337 Runs, 2026-10-24* | 1 |
-| [`additional-study-review-20261022/host-gap-check-20261107`](additional-study-review-20261022/host-gap-check-20261107/) | Ledger: *5-Min Benign Validation Gap (top/lowrate Never Ran) + Timing Control + Bursty/Short Benign Collection, 2026-11-07* | 15 |
+| [`additional-study-review-20261022/host-gap-check-20261107`](additional-study-review-20261022/host-gap-check-20261107/) | Ledger: *5-Min Benign Validation Gap (top/lowrate Never Ran) + Timing Control + Bursty/Short Benign Collection, 2026-11-07* | 16 |
 | `additional-study-review-20261022/i386-network-builds` | Ledger: *Real-Collection Plan On .21 Drafted; User Decisions Recorded, 2026-10-24* | 0 |
 | [`additional-study-review-20261022/improvement-results-20261027`](additional-study-review-20261022/improvement-results-20261027/) | docs: [RESULTS.md](additional-study-review-20261022/improvement-results-20261027/RESULTS.md), [task3_cohort_expansion.md](additional-study-review-20261022/improvement-results-20261027/task3_cohort_expansion.md), [task4_botnet_shaped_benign.md](additional-study-review-20261022/improvement-results-20261027/task4_botnet_shaped_benign.md) | 4 |
 | [`additional-study-review-20261022/integrated-collector-readiness`](additional-study-review-20261022/integrated-collector-readiness/) | Ledger: *Separately Versioned Integrated Collector Prepared, 2026-10-23* | 4 |
@@ -143,6 +146,8 @@ the drivers and analysis scripts; each subfolder holds the attempts of one exper
 | `additional-study-review-20261022/integrity-v21` | Ledger: *Runner .21 (Microsecond Window Anchor) Installed; .21 Integrity Battery Launched, 2026-10-24* | 0 |
 | [`additional-study-review-20261022/iot23-external`](additional-study-review-20261022/iot23-external/) | Ledger: *IoT-23 External Check Of The Network Half (Offline), 2026-11-05* | 6 |
 | [`additional-study-review-20261022/launcher-ablation`](additional-study-review-20261022/launcher-ablation/) | Ledger: *Cohort Captures Packaged For The Switch Replays + 1 s Offline Reference, 2026-11-08*; docs: [README.md](additional-study-review-20261022/launcher-ablation/README.md) | 4 |
+| [`additional-study-review-20261022/launcher-ablation-05s`](additional-study-review-20261022/launcher-ablation-05s/) | Ledger: *Launcher Ablation Rerun At 0.5 s With Durable Scripts, 2026-11-11*; docs: [README.md](additional-study-review-20261022/launcher-ablation-05s/README.md) | 2 |
+| [`additional-study-review-20261022/lidds-cross`](additional-study-review-20261022/lidds-cross/) | Ledger: *Cross-Dataset Test: LID-DS 2021 <-> Our Dataset Does Not Transfer, 2026-11-12*; docs: [README.md](additional-study-review-20261022/lidds-cross/README.md) | 5 |
 | [`additional-study-review-20261022/lidds-external`](additional-study-review-20261022/lidds-external/) | Ledger: *LID-DS Test 1 Over Ten Fold Assignments + Thesis Write-Up, 2026-11-06* | 14 |
 | [`additional-study-review-20261022/lowrate21-collect`](additional-study-review-20261022/lowrate21-collect/) | Ledger: *Low-Rate Benign Collection Done: IoT-23 Device False Alarms 57% -> 38%, Table V Slightly Up, 2026-11-06* | 1 |
 | `additional-study-review-20261022/matched45-builds` | Ledger: *Approved Matched 45+45 Identity Preparation, 2026-10-22* | 0 |
@@ -153,7 +158,10 @@ the drivers and analysis scripts; each subfolder holds the attempts of one exper
 | `additional-study-review-20261022/merge-readiness` | Ledger: *Original Source Recovery And Merge-Readiness Gate, 2026-10-22* | 0 |
 | [`additional-study-review-20261022/net-strong-viability`](additional-study-review-20261022/net-strong-viability/) | Ledger: *Option B: Offline C2 RE Triage + Targeted Controlled-C2 Flood Run -> 0/3 (live-bot route exhausted), 2026-10-26* | 12 |
 | `additional-study-review-20261022/netcat-musl-dependencies` | Ledger: *Compatible Netcat Repair And Allocator Candidate, 2026-10-22* | 0 |
+| [`additional-study-review-20261022/network-census-20261116`](additional-study-review-20261022/network-census-20261116/) | Census of the Linux families with network-active x86 samples on Triage and MalwareBazaar, and their download into quarantine (nothing executed): the source of the session lab's Triage cohort, 2026-11-16 | 5 |
 | [`additional-study-review-20261022/paper-check-20261028`](additional-study-review-20261022/paper-check-20261028/) | Ledger: *Paper Check Of The Overleaf Version Against The Data, 2026-10-28* | 4 |
+| [`additional-study-review-20261022/pc1-part3-check-20261111`](additional-study-review-20261022/pc1-part3-check-20261111/) | Ledger: *PC1 Part 3 Checked: Libc Start-Up Residual Confirmed Call By Call; Table V Depends On scikit-learn 1.8, 2026-11-11*; docs: [README.md](additional-study-review-20261022/pc1-part3-check-20261111/README.md) | 5 |
+| [`additional-study-review-20261022/pc1-static-benign`](additional-study-review-20261022/pc1-static-benign/) | Ledger: *PC1 Hand-Off Pushed; Encrypted-Traffic Collection Launched, 2026-11-15* (the dataset's static benign programs packed for PC1 part 6; the tarball stays local); docs: [static-benign/README.md](additional-study-review-20261022/pc1-static-benign/static-benign/README.md) | 2 |
 | `additional-study-review-20261022/pilot-5min` | Ledger: *Observation-Length 5-Minute Pilot Built And Frozen (No VM Yet), 2026-11-05* | 0 |
 | [`additional-study-review-20261022/precision-phase4`](additional-study-review-20261022/precision-phase4/) | Ledger: *Bot-Flooding Phase 4: Precision Harness Built; Kaiten-C2 Flood + Benign-Bulk Paired Capture (overnight), 2026-10-25* | 16 |
 | `additional-study-review-20261022/quiet-ambient` | Ledger: *Benchmark No-Traffic Root Cause Verified; V4 Probe Draft Repaired Locally, 2026-10-24* | 0 |
@@ -180,17 +188,29 @@ the drivers and analysis scripts; each subfolder holds the attempts of one exper
 | `additional-study-review-20261022/remediation-workload-readiness` | Ledger: *Remediation Collection Readiness Continued, 2026-10-22* | 0 |
 | `additional-study-review-20261022/revision5-collection` | Ledger: *Matched-Cohort Payload + Driver Built And Frozen (revision5-matched), 2026-10-25* | 0 |
 | `additional-study-review-20261022/revision5-model-fit` | Ledger: *Matched-Cohort Held-Out Fit: Confounds Controlled, Host Strong On A Draw, Hybrid != Host, 2026-10-25* | 0 |
+| [`additional-study-review-20261022/sample-intel-20261113`](additional-study-review-20261022/sample-intel-20261113/) | Ledger: *Network Behaviour Of The 99 On Triage's Internet Sandbox, 2026-11-15* (and the platform lookups of 2026-11-13 and 2026-11-17); docs: [README.md](additional-study-review-20261022/sample-intel-20261113/README.md) | 4 |
+| [`additional-study-review-20261022/sample-inventory-20261112`](additional-study-review-20261022/sample-inventory-20261112/) | Ledger: *On-Disk Inventory Of Native Samples Outside The 99, 2026-11-12* | 1 |
 | `additional-study-review-20261022/scale-5min` | Ledger: *Observation-Length Pilot COLLECTED: 20s Truncates 70-93% Of Malware Behavior; Scaled 50+50 Launched, 2026-11-05* | 0 |
 | [`additional-study-review-20261022/scoped-hybrid-eval`](additional-study-review-20261022/scoped-hybrid-eval/) | Ledger: *Scoped Hybrid Numeric Evaluation: Flood Result Holds On Real Captures; Host-Evasive Claim Retracted, 2026-10-26* | 2 |
 | [`additional-study-review-20261022/scoped-performance`](additional-study-review-20261022/scoped-performance/) | Ledger: *Benchmark No-Traffic Root Cause Verified; V4 Probe Draft Repaired Locally, 2026-10-24* | 4 |
 | [`additional-study-review-20261022/scoped-performance-v2`](additional-study-review-20261022/scoped-performance-v2/) | Ledger: *Actual Performance V2 Stopped And Saved Prefix Audited, 2026-10-23* | 3 |
 | [`additional-study-review-20261022/scoped-performance-v3`](additional-study-review-20261022/scoped-performance-v3/) | Ledger: *Benchmark No-Traffic Root Cause Verified; V4 Probe Draft Repaired Locally, 2026-10-24* | 3 |
 | [`additional-study-review-20261022/scoped-performance-v4`](additional-study-review-20261022/scoped-performance-v4/) | Ledger: *Benchmark No-Traffic Root Cause Verified; V4 Probe Draft Repaired Locally, 2026-10-24* | 2 |
+| [`additional-study-review-20261022/sensor-visibility`](additional-study-review-20261022/sensor-visibility/) | Ledger: *Sensor-Visibility Test: 5 Tsunami Bots Quit When Our Collector Is Visible, 2026-11-15*; docs: [README.md](additional-study-review-20261022/sensor-visibility/README.md) | 7 |
+| [`additional-study-review-20261022/session-lab`](additional-study-review-20261022/session-lab/) | Ledger: *Session Lab (LID-DS-Like Sessions, Network Captured On The Sink): Pilot Approved And Launched, 2026-11-15* to *Network-Active Benign Batch Approved And Launched, 2026-11-17*; docs: [DESIGN.md](additional-study-review-20261022/session-lab/DESIGN.md), [REPORT.md](additional-study-review-20261022/session-lab/REPORT.md), [base/20261117c/README.md](additional-study-review-20261022/session-lab/base/20261117c/README.md) | 69 |
+| [`additional-study-review-20261022/sink-sinkhole`](additional-study-review-20261022/sink-sinkhole/) | Ledger: *Passive Sinkhole For The Sink Built And Tested Locally (Not Applied), 2026-11-12* | 10 |
+| [`additional-study-review-20261022/sinkhole-c2-5min`](additional-study-review-20261022/sinkhole-c2-5min/) | Ledger: *Sinkhole C2 Experiment Approved; Guest Check First, 2026-11-13* (builder and driver: `build_sinkhole_c2_payload.py`, `collect_sinkhole_c2.py` one level up) | 4 |
+| [`additional-study-review-20261022/sliver-c2-5min`](additional-study-review-20261022/sliver-c2-5min/) | Ledger: *Sliver C2 testbed prepared, 2026-11-13* (our own Sliver server + implants in the sealed lab; `PLAN.md`, `rc/`; binaries git-ignored) | 13 |
+| [`additional-study-review-20261022/sockowner-check`](additional-study-review-20261022/sockowner-check/) | Ledger: *Committee Response: Rigor, Attribution, Switch Gap, Datasheet (Offline), 2026-11-13* (socket-level attribution: the live benign check and the run beside malware) | 8 |
 | `additional-study-review-20261022/source-recovery` | Ledger: *Original Source Recovery And Merge-Readiness Gate, 2026-10-22* | 0 |
 | [`additional-study-review-20261022/switch-exact-1s`](additional-study-review-20261022/switch-exact-1s/) | Ledger: *Cohort Captures Packaged For The Switch Replays + 1 s Offline Reference, 2026-11-08*; docs: [README.md](additional-study-review-20261022/switch-exact-1s/README.md) | 3 |
 | [`additional-study-review-20261022/thesis-experiments-20261103`](additional-study-review-20261022/thesis-experiments-20261103/) | docs: [PLAN.md](additional-study-review-20261022/thesis-experiments-20261103/PLAN.md), [THESIS_FINDINGS.md](additional-study-review-20261022/thesis-experiments-20261103/THESIS_FINDINGS.md) | 13 |
+| `additional-study-review-20261022/toolchain21-collect` | Ledger: *Committee Response: Rigor, Attribution, Switch Gap, Datasheet (Offline), 2026-11-13* (the toolchain-matched benign collection; driver `collect_toolchain21.py` one level up) | 0 |
+| `additional-study-review-20261022/tools21-build` | Ledger: *PC1 Hand-Off Pushed; Encrypted-Traffic Collection Launched, 2026-11-15* (attack-tool build preparation, stopped; authenticated sources only, git-ignored) | 0 |
 | `additional-study-review-20261022/topup-5min` | Ledger: *Observation-Length Study: Final Real-Data Scoring + Sink Outage Found And Measured, 2026-11-07* | 0 |
 | `additional-study-review-20261022/topup-5min-finish` | Ledger: *Observation-Length Study: Final Real-Data Scoring + Sink Outage Found And Measured, 2026-11-07* | 0 |
+| [`additional-study-review-20261022/transport21`](additional-study-review-20261022/transport21/) | Ledger: *PC1 Hand-Off Pushed; Encrypted-Traffic Collection Launched, 2026-11-15* (our own client and server over HTTP, TLS 1.1 to 1.3 and QUIC; the built binary stays local) | 6 |
+| `additional-study-review-20261022/transport21-collect` | Ledger: *PC1 Hand-Off Pushed; Encrypted-Traffic Collection Launched, 2026-11-15* (the encrypted-traffic collection; driver `collect_transport21.py` one level up) | 0 |
 | `additional-study-review-20261022/v19-pilot` | Ledger: *Benchmark No-Traffic Root Cause Verified; V4 Probe Draft Repaired Locally, 2026-10-24* | 0 |
 | [`additional-study-review-20261022/v19-small-collection`](additional-study-review-20261022/v19-small-collection/) | Ledger: *New Installed-.19 Driver And Small Plan Prepared Locally, 2026-10-24* | 1 |
 | `additional-study-review-20261022/v21-collection` | Ledger: *v21 Guarded Exploratory Fit: Held-Out Weak, Nuisance Shortcut Dominates, 2026-10-25* | 0 |
