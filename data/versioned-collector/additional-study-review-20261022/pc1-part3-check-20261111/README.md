@@ -1,6 +1,6 @@
 # Check of PC1.md part 3 (2026-11-11)
 
-Offline checks of p4_ebpf `c64f029` (PC1.md "Results, part 3"): the startup-free detectors of
+Offline checks of p4_ebpf `ee794d9` (PC1.md "Results, part 3"): the startup-free detectors of
 `live_test/prologuefree/features_05s_prologuefree.csv` (= `../launcher-ablation-05s/run-20261111/`) and
 the 47 live executions rescored. No VM, no model promotion, no merge.
 
